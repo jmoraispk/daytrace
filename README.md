@@ -34,6 +34,7 @@ This repository is currently in the product and architecture planning phase.
 - [Privacy and security](docs/PRIVACY_SECURITY.md)
 - [Product and UX specification](docs/PRODUCT_UX.md)
 - [Screenpipe reuse audit](docs/SCREENPIPE_REUSE.md)
+- [ActivityWatch integration research](docs/ACTIVITYWATCH_INTEGRATION_RESEARCH.md)
 
 ## Proposed repository shape
 
