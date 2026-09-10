@@ -3,6 +3,8 @@
 Date: 2026-09-10
 Status: Approved direction; ready for implementation planning
 
+Live compatibility baseline: ActivityWatch `aw-server-rust` v0.13.2
+
 ## Goal
 
 Build a small, headless CLI that reads one calendar day from a locally running
@@ -101,9 +103,16 @@ Each supported event becomes an internal record containing:
 - URL host
 - language
 
-Records are ordered by start time, then source bucket ID, then ActivityWatch
-event ID. Invalid timestamps and negative durations are skipped with a warning.
-Events crossing the day boundary are clipped to it.
+The client does not rely on server response order: v0.13.2 returns bounded
+event queries newest-first. Records are reordered by start time, then source
+bucket ID, then ActivityWatch event ID. Invalid timestamps and non-positive
+durations are skipped with a warning. Events crossing the day boundary are
+clipped to it.
+
+The client enforces the half-open range itself even though v0.13.2 also clips
+cross-boundary events. In particular, that server can return an event starting
+exactly at the requested end timestamp with a zero duration; the client drops
+that record.
 
 AFK intervals are unioned first. Away portions are subtracted from other
 records, splitting records when necessary. This ensures the timeline describes
@@ -198,6 +207,11 @@ semantics.
   output files.
 - Live smoke test against ActivityWatch once a local server is available and
   the user explicitly permits reading a chosen day's activity.
+
+The connection, bucket metadata, standard watcher event shapes, bounded query
+behavior, and response ordering have been verified against an isolated
+ActivityWatch v0.13.2 testing server with synthetic `currentwindow`,
+`afkstatus`, `app.editor.activity`, and `web.tab.current` buckets.
 
 ## Explicitly Deferred
 
