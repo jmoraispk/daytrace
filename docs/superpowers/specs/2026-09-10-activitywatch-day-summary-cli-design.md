@@ -10,7 +10,8 @@ Live compatibility baseline: ActivityWatch `aw-server-rust` v0.13.2
 Build a small, headless CLI that reads one calendar day from a locally running
 ActivityWatch server and writes a deterministic Markdown activity summary. The
 prototype does not capture activity itself, use an LLM, or persist a second
-copy of ActivityWatch data.
+copy of ActivityWatch data. It is distributed as a pure-Python wheel and run
+with `uv` on Linux, macOS, and Windows.
 
 Example:
 
@@ -23,33 +24,37 @@ another program, or consumed later by the user's second-brain project.
 
 ## Approaches Considered
 
-### Direct REST client in Rust (selected)
+### Python with the official `aw-client` package (selected)
 
-Call ActivityWatch's localhost API directly, normalize raw watcher events, and
-render Markdown in one binary.
+Use ActivityWatch's primary client library to discover buckets and fetch raw
+events, then normalize and render them in a small Python package.
 
-- Small deployment surface and no Python/Node runtime.
-- Keeps the ActivityWatch dependency at its HTTP boundary.
-- Straightforward to extract into a reusable Rust library later.
-- Requires us to maintain compatibility with the subset of the API we use.
+- Fastest route to a working, testable prototype.
+- Uses ActivityWatch's supported `get_info`, `get_buckets`, and `get_events`
+  client interface rather than recreating it.
+- Produces a cross-platform, pure-Python wheel that `uv` can install or run in
+  an isolated environment.
+- Gives the second-brain project a normal importable Python API.
+- Has higher startup and memory overhead than a native binary, but that is
+  immaterial for a command that runs once and exits.
 
-### ActivityWatch query API
+### Direct REST client in Python
 
-Send ActivityWatch query-language programs to the server and render their
-results.
+Use a general HTTP library to call the verified ActivityWatch REST endpoints
+without depending on `aw-client`.
 
-- Can reduce data transferred to the CLI.
-- Couples the prototype more tightly to ActivityWatch query semantics and
-  makes its transformation logic harder to test independently.
+- Gives complete control over HTTP behavior and dependency versions.
+- Makes Daytrace responsible for compatibility with ActivityWatch's evolving
+  API even though an official Python client already exists.
 
-### Script using an ActivityWatch client package
+### Native Rust CLI
 
-Use Python and the ActivityWatch client package for the fastest throwaway
-implementation.
+Call ActivityWatch directly and ship a standalone native executable.
 
-- Quick initial development.
-- Adds a runtime and packaging burden that conflicts with the intended
-  efficient cross-platform utility.
+- Has lower startup overhead and can later share code with a Rust/Tauri desktop
+  collector.
+- Takes longer to implement and package, while offering little practical
+  benefit for this short-lived reporting command.
 
 ## Command Surface
 
@@ -70,15 +75,29 @@ The first version has one output format: deterministic Markdown. It does not
 require an API key or network access beyond the explicitly configured
 ActivityWatch server.
 
+From a source checkout:
+
+```text
+uv sync
+uv run daytrace activitywatch --date 2026-09-10 --output summary.md
+```
+
+After publication, users can run it without permanent installation:
+
+```text
+uvx daytrace activitywatch --date 2026-09-10 --output summary.md
+```
+
 ## Data Acquisition
 
 1. Resolve the selected local day to an exact half-open time range `[start,
    end)` in the requested or system timezone.
-2. Verify the server with `GET /api/0/info`.
-3. Discover buckets with `GET /api/0/buckets/` rather than assuming hostnames
-   or bucket IDs.
+2. Create an `ActivityWatchClient` from the host, port, and protocol parsed
+   from `--server`, then verify it with `get_info()`.
+3. Discover buckets with `get_buckets()` rather than assuming hostnames or
+   bucket IDs.
 4. Fetch events for the selected range from relevant raw watcher buckets with
-   `GET /api/0/buckets/{bucket_id}/events?start=...&end=...`.
+   `get_events(bucket_id, start=..., end=...)`.
 5. Recognize standard bucket types where available:
    - current window: application and title
    - AFK status: active or away intervals
@@ -88,7 +107,8 @@ ActivityWatch server.
    count in diagnostics only.
 
 No ActivityWatch database files are opened directly. The CLI only uses the
-documented localhost HTTP interface.
+official client library over ActivityWatch's localhost HTTP interface. The
+query-language API is not used in this prototype.
 
 ## Normalization and Filtering
 
@@ -181,25 +201,49 @@ directory replaced by `~`.
 
 ## Internal Structure
 
-The binary remains thin over a reusable library boundary:
+The console entry point remains thin over a reusable Python library boundary:
 
 ```text
 CLI arguments
-    -> ActivityWatch HTTP client
+    -> ActivityWatch client adapter
     -> raw event normalization
     -> AFK/project filtering and merging
     -> report model
     -> deterministic Markdown renderer
 ```
 
-The report model is serializable but JSON output is intentionally deferred.
-The second-brain project can later call the library directly, execute the CLI,
-or schedule the command and ingest its Markdown without changing extraction
-semantics.
+The package uses focused modules under `src/daytrace/` for the CLI, the
+ActivityWatch adapter, domain models and transforms, and Markdown rendering.
+The public function
+`daytrace.activitywatch.summarize_day(date, project=None, ...) -> str` returns
+the same Markdown emitted by the CLI. The report model is serializable but JSON
+output is intentionally deferred.
+
+The second-brain project can import that function, execute the CLI, or schedule
+the command and ingest its Markdown without changing extraction semantics.
+
+## Packaging and Runtime
+
+- Python 3.11 or newer.
+- Standards-based `pyproject.toml` using the `uv_build` backend and a `daytrace`
+  console entry point.
+- Runtime dependency on `aw-client`; its compatible version range is recorded
+  in `pyproject.toml` and the exact development version in `uv.lock`.
+- Conditional `tzdata` dependency on platforms such as Windows that do not
+  provide an IANA timezone database.
+- Standard-library `argparse`, `datetime`, `zoneinfo`, and `urllib.parse` for
+  the remaining CLI and transformation needs.
+- `uv build --no-sources` produces the source distribution and universal
+  `py3-none-any` wheel.
+
+Rust/Tauri remains an option for the future continuous desktop collector. The
+ActivityWatch summary package does not need to share that implementation
+language.
 
 ## Verification Strategy
 
-- Fixture tests for bucket discovery and every supported watcher schema.
+- `pytest` fixture tests for bucket discovery and every supported watcher
+  schema through a fake ActivityWatch adapter.
 - Boundary tests for local-midnight ranges, daylight-saving changes, clipped
   events, AFK interval subtraction, and overlapping watcher sources.
 - Golden-file tests for byte-stable Markdown.
@@ -207,6 +251,7 @@ semantics.
   output files.
 - Live smoke test against ActivityWatch once a local server is available and
   the user explicitly permits reading a chosen day's activity.
+- Wheel build and isolated install/run tests with `uv`.
 
 The connection, bucket metadata, standard watcher event shapes, bounded query
 behavior, and response ordering have been verified against an isolated
@@ -222,3 +267,4 @@ ActivityWatch v0.13.2 testing server with synthetic `currentwindow`,
 - GitHub synchronization
 - automatic second-brain writes
 - custom watcher schemas and configurable project rules
+- standalone native executables

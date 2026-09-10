@@ -9,17 +9,21 @@ collection or storage replacement
 
 ## Executive conclusion
 
-Daytrace can integrate cleanly with ActivityWatch. The recommended first
-integration is a native, read-only-in-practice connector to the local
-ActivityWatch REST API. It should request bounded, AFK-filtered canonical
-activity for one device/day, aggregate and redact it inside Daytrace, and feed
-the result into Daytrace's existing summary pipeline.
+Daytrace can integrate cleanly with ActivityWatch. The approved first
+integration is a pure-Python CLI and library using ActivityWatch's official
+`aw-client` package. It requests bounded raw watcher events for one day,
+applies AFK filtering locally, and renders deterministic Markdown. A native
+connector using canonical activity remains a possible later integration for a
+Tauri desktop application.
 
-Do not bundle ActivityWatch, fork its server, read its SQLite database directly,
-or copy its Python stack into Daytrace. Do not write a Daytrace watcher or
-publish summaries back into ActivityWatch in the first version. Those options
-add lifecycle, licensing, corruption, and security costs without improving the
-summary use case.
+Do not bundle ActivityWatch, fork its server, or read its SQLite database
+directly. Do not write a Daytrace watcher or publish summaries back into
+ActivityWatch in the first version. Those options add lifecycle, corruption,
+and security costs without improving the summary use case.
+
+The prototype is distributed as a wheel with `uv`. The narrow Rust connector
+discussed below remains an option for a future Tauri desktop application; it is
+not required for the prototype.
 
 Two user modes are useful:
 
@@ -157,14 +161,15 @@ Standard event payloads include:
 Events are appended using heartbeats. Adjacent heartbeats with identical data
 inside a pulse window merge into a longer event, reducing I/O. An isolated
 heartbeat may have zero duration. ActivityWatch's `flood` analysis transform
-fills appropriate gaps; Daytrace should consume canonical/flooded output rather
-than interpreting raw zero-duration events itself.
+fills appropriate gaps. The deterministic prototype deliberately reads bounded
+raw events and drops non-positive records after clipping. A future embedded
+desktop connector can instead consume canonical/flooded output.
 
 All timestamps are UTC. ActivityWatch's documented event format discards the
 original offset. Daytrace must label the local timezone applied during a query
 as inferred and avoid claiming it was the timezone at capture time.
 
-## Why canonical events are the right boundary
+## Why canonical events may be the right future desktop boundary
 
 ActivityWatch's canonical query is the same basic processing family used by its
 web UI. It:
@@ -187,7 +192,7 @@ window/AFK bucket IDs, and the Python CLI describes canonical events as “for a
 single host.” The underlying `find_bucket` transform returns the first matching
 bucket, not a merged set.
 
-Daytrace should therefore:
+A future desktop connector should therefore:
 
 1. list buckets;
 2. group compatible window, AFK, and browser buckets by ActivityWatch hostname;
@@ -201,19 +206,21 @@ Do not silently send a prefix that could select an arbitrary bucket.
 
 | Option | Advantages | Problems | Decision |
 |---|---|---|---|
-| Local REST query | no database coupling; canonical transforms; cross-platform; small client | versioned as `/api/0`; optional auth varies | **Use first** |
+| Local REST query | no database coupling; canonical transforms; cross-platform; small client | versioned as `/api/0`; optional auth varies | Consider for the later desktop connector |
 | JSON export import | offline, inspectable, supports historical migration | exports can be huge and contain raw sensitive data; stale snapshot | Add later as an explicit file import |
 | Direct SQLite read | avoids server dependency | schema/migration coupling, lock/corruption risk, bypasses canonical logic | Do not use |
-| Python `aw-client` sidecar | production reference client | adds Python runtime/process and packaging overhead | Use as behavioral reference only |
+| Python wheel using `aw-client` | primary supported client; fastest implementation; importable by the second brain | requires Python, supplied automatically by `uv` | **Use for the prototype** |
 | Rust `aw-client-rust` | same language as Daytrace; current query helpers | explicitly WIP, version `0.1.0`, not a stable public boundary | Re-evaluate later; do not vendor in v1 |
 | ActivityWatch watcher that receives summaries | native bucket model | grants write access and reverses the required data flow | Defer |
 | Bundle/fork ActivityWatch | controlled end-to-end experience | duplicates Daytrace capture, process lifecycle, UI, storage, and updates | Do not use |
 
-## Proposed Daytrace architecture
+## Proposed future desktop architecture
 
-Add `daytrace-source-activitywatch` behind an optional Cargo feature and UI
+If the later Tauri application needs an embedded connector, add
+`daytrace-source-activitywatch` behind an optional Cargo feature and UI
 integration. It depends only on Daytrace's HTTP, JSON, time, policy, and domain
-types—not on the ActivityWatch database.
+types—not on the ActivityWatch database. This is not part of the Python CLI
+prototype.
 
 ```text
 ActivityWatchSource
@@ -562,7 +569,11 @@ change. Source review also found documentation drift around the canonical query
 signature, multi-device behavior, and API-key support. Implementation must use
 fixtures and live capability tests, not copied documentation examples alone.
 
-## Implementation plan
+## Future desktop implementation outline
+
+The following phases predate the approved Python CLI and describe a possible
+embedded Tauri integration. They are not the implementation plan for the
+prototype.
 
 ### AW0 — contract spike (2–3 engineer-days)
 
@@ -659,13 +670,15 @@ should not be marketed as cross-version support.
 
 ## Recommended decisions
 
-1. Approve the live localhost REST connector and linked-summary mode for the
-   first ActivityWatch milestone.
-2. Use ActivityWatch canonical events per host, then merge locally.
+1. Build the first ActivityWatch milestone as a Python CLI and importable
+   library using `aw-client`, packaged as a wheel with `uv`.
+2. Fetch bounded raw watcher events and apply deterministic AFK filtering,
+   matching, merging, and Markdown rendering locally.
 3. Default cloud summaries to categories, applications, domain-only browser
    totals, and coarse timeline blocks. Omit titles and paths.
-4. Implement a narrow Daytrace Rust client rather than depend on the WIP Rust
-   client or a Python sidecar.
+4. Reconsider a narrow Daytrace Rust client only if ActivityWatch becomes an
+   embedded source in a future Tauri desktop process; do not require it for the
+   prototype.
 5. Support latest stable plus current prerelease during development; choose the
    formal minimum version only after AW0 fixtures.
 6. Defer journal import, remote servers, arbitrary queries, and writing back to
