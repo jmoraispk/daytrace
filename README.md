@@ -7,6 +7,58 @@ discarded; the durable record contains text and structured metadata only.
 
 This repository is currently in the product and architecture planning phase.
 
+## ActivityWatch summary prototype
+
+The first executable prototype is a Python CLI that reads a selected day from
+an already-running ActivityWatch instance and produces deterministic Markdown.
+It does not copy raw events or call an LLM.
+
+Prerequisites: install and run ActivityWatch, then install `uv`. On Windows:
+
+```powershell
+winget install --id=astral-sh.uv -e
+```
+
+From a source checkout:
+
+```powershell
+git switch codex/activitywatch-integration-research
+uv sync
+uv run daytrace activitywatch --date 2026-09-10 --output summary.md
+```
+
+Filter the report to records containing a project name:
+
+```powershell
+uv run daytrace activitywatch --date 2026-09-10 --project daytrace --output summary.md
+```
+
+The resulting `summary.md` contains an overview, a chronological timeline, and
+application totals. A day with no matching activity is still a successful
+report and contains `No matching activity.`
+
+After the package is published, the equivalent one-off command will be:
+
+```powershell
+uvx daytrace activitywatch --date 2026-09-10 --output summary.md
+```
+
+Python callers—including a future second-brain integration—can use the same
+deterministic renderer directly:
+
+```python
+from datetime import date
+
+from daytrace.activitywatch import summarize_day
+
+markdown = summarize_day(date(2026, 9, 10), project="daytrace")
+```
+
+Daytrace reads ActivityWatch through `http://127.0.0.1:5600` by default. It
+does not retain images, audio, video, full browser URLs, or a second copy of
+ActivityWatch events. Use `--server` for another ActivityWatch endpoint and
+`--timezone` for an explicit IANA timezone such as `America/Los_Angeles`.
+
 ## Product decisions
 
 - Local-first: the database and processing stay on the user's computer unless
