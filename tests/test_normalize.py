@@ -5,7 +5,9 @@ from daytrace.normalize import normalize_events
 from daytrace.time import resolve_day
 
 
-def event(event_id: str, timestamp: str, seconds: float, data: dict[str, object]) -> RawEvent:
+def event(
+    event_id: str, timestamp: str, seconds: float, data: dict[str, object]
+) -> RawEvent:
     return RawEvent(
         id=event_id,
         timestamp=datetime.fromisoformat(timestamp.replace("Z", "+00:00")),
@@ -67,7 +69,9 @@ def test_clips_cross_boundary_drops_zero_length_and_sorts_records() -> None:
         warnings.append,
     )
 
-    assert [(record.event_id, record.start, record.duration_seconds) for record in records] == [
+    assert [
+        (record.event_id, record.start, record.duration_seconds) for record in records
+    ] == [
         ("cross", datetime(2026, 9, 10, tzinfo=timezone.utc), 60),
         ("later", datetime(2026, 9, 10, 12, tzinfo=timezone.utc), 60),
     ]

@@ -34,15 +34,20 @@ def build_report(
     applications = tuple(
         ApplicationTotal(app, seconds)
         for app, seconds in sorted(
-            app_seconds.items(), key=lambda item: (-item[1], item[0].casefold(), item[0])
+            app_seconds.items(),
+            key=lambda item: (-item[1], item[0].casefold(), item[0]),
         )
     )
-    sources = tuple(sorted({item.kind for item in timeline}, key=SOURCE_ORDER.__getitem__))
+    sources = tuple(
+        sorted({item.kind for item in timeline}, key=SOURCE_ORDER.__getitem__)
+    )
     return ActivityReport(
         day=day,
         timezone_name=window.timezone_name,
         project=project,
-        active_seconds=sum(item.seconds for item in applications) if allocation else None,
+        active_seconds=sum(item.seconds for item in applications)
+        if allocation
+        else None,
         sources=sources,
         timeline=timeline,
         applications=applications,

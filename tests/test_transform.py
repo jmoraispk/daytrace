@@ -18,7 +18,10 @@ def test_remove_afk_splits_active_record(make_record) -> None:
 
     result = remove_afk((window, away))
 
-    assert [(item.start.minute, item.end.minute) for item in result] == [(0, 10), (15, 30)]
+    assert [(item.start.minute, item.end.minute) for item in result] == [
+        (0, 10),
+        (15, 30),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -48,7 +51,9 @@ def test_merge_adjacent_requires_same_bucket_and_content(make_record) -> None:
 
     result = merge_adjacent((first, second, other_bucket), timedelta(seconds=60))
 
-    assert [(item.bucket_id, item.start.minute, item.end.minute) for item in result] == [
+    assert [
+        (item.bucket_id, item.start.minute, item.end.minute) for item in result
+    ] == [
         ("window", 0, 11),
         ("window-2", 12, 17),
     ]
@@ -56,12 +61,16 @@ def test_merge_adjacent_requires_same_bucket_and_content(make_record) -> None:
 
 def test_merge_adjacent_tracks_each_bucket_independently(make_record) -> None:
     first = make_record(0, 5, event_id="1")
-    interleaved = make_record(5, 1, event_id="2", bucket="editor", kind=SourceKind.EDITOR)
+    interleaved = make_record(
+        5, 1, event_id="2", bucket="editor", kind=SourceKind.EDITOR
+    )
     second = make_record(6, 5, event_id="3")
 
     result = merge_adjacent((first, interleaved, second), timedelta(seconds=60))
 
-    assert [(item.bucket_id, item.start.minute, item.end.minute) for item in result] == [
+    assert [
+        (item.bucket_id, item.start.minute, item.end.minute) for item in result
+    ] == [
         ("window", 0, 11),
         ("editor", 5, 6),
     ]
@@ -108,7 +117,10 @@ def test_touching_afk_intervals_are_unioned(make_record) -> None:
         10, 5, kind=SourceKind.AFK, bucket="afk", event_id="2", status="afk"
     )
     result = remove_afk((window, first, second))
-    assert [(item.start.minute, item.end.minute) for item in result] == [(0, 5), (15, 30)]
+    assert [(item.start.minute, item.end.minute) for item in result] == [
+        (0, 5),
+        (15, 30),
+    ]
 
 
 def test_overlapping_identical_records_merge_to_later_end(make_record) -> None:

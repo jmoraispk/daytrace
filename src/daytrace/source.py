@@ -62,9 +62,13 @@ class AwClientSource:
     def get_info(self) -> ServerInfo:
         try:
             info = self._client.get_info()
-            return ServerInfo(str(info.get("version", "unknown")), bool(info.get("testing")))
+            return ServerInfo(
+                str(info.get("version", "unknown")), bool(info.get("testing"))
+            )
         except Exception as exc:
-            raise ActivityWatchConnectionError("ActivityWatch info request failed") from exc
+            raise ActivityWatchConnectionError(
+                "ActivityWatch info request failed"
+            ) from exc
 
     def list_buckets(self) -> tuple[RawBucket, ...]:
         try:
@@ -79,13 +83,17 @@ class AwClientSource:
                 for bucket_id, data in sorted(buckets.items())
             )
         except Exception as exc:
-            raise ActivityWatchConnectionError("ActivityWatch bucket request failed") from exc
+            raise ActivityWatchConnectionError(
+                "ActivityWatch bucket request failed"
+            ) from exc
 
     def get_events(
         self, bucket_id: str, start: datetime, end: datetime
     ) -> tuple[RawEvent, ...]:
         try:
-            events: Sequence[Any] = self._client.get_events(bucket_id, start=start, end=end)
+            events: Sequence[Any] = self._client.get_events(
+                bucket_id, start=start, end=end
+            )
             return tuple(
                 RawEvent(
                     id=str(event.id),

@@ -27,7 +27,9 @@ def test_cli_writes_utf8_lf_output_file(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(cli, "summarize_day", lambda *args, **kwargs: markdown)
     output = tmp_path / "summary.md"
 
-    status = cli.main(["activitywatch", "--date", "2026-09-10", "--output", str(output)])
+    status = cli.main(
+        ["activitywatch", "--date", "2026-09-10", "--output", str(output)]
+    )
 
     assert status == 0
     assert output.read_bytes() == "# Activity summary — 2026-09-10\n".encode("utf-8")
@@ -80,7 +82,9 @@ def test_cli_reports_invalid_server_url_without_echoing_it(monkeypatch, capsys) 
     assert "secret" not in captured.err
 
 
-def test_cli_sanitizes_output_write_failure(monkeypatch, capsys, tmp_path: Path) -> None:
+def test_cli_sanitizes_output_write_failure(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
     monkeypatch.setattr(cli, "summarize_day", lambda *args, **kwargs: "summary\n")
 
     def fail_write(self, data):
@@ -88,7 +92,9 @@ def test_cli_sanitizes_output_write_failure(monkeypatch, capsys, tmp_path: Path)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
     output = tmp_path / "summary.md"
-    status = cli.main(["activitywatch", "--date", "2026-09-10", "--output", str(output)])
+    status = cli.main(
+        ["activitywatch", "--date", "2026-09-10", "--output", str(output)]
+    )
 
     captured = capsys.readouterr()
     assert status == 1

@@ -29,7 +29,9 @@ def summarize_day(
     activity_source = source or AwClientSource.from_url(server)
     activity_source.get_info()
     buckets = activity_source.list_buckets()
-    supported = tuple(bucket for bucket in buckets if bucket.type in SUPPORTED_BUCKET_TYPES)
+    supported = tuple(
+        bucket for bucket in buckets if bucket.type in SUPPORTED_BUCKET_TYPES
+    )
     unknown_count = len(buckets) - len(supported)
     if unknown_count:
         noun = "bucket" if unknown_count == 1 else "buckets"

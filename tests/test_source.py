@@ -50,8 +50,11 @@ def test_adapter_converts_official_client_objects() -> None:
 
     assert source.get_info().version == "v0.13.2 (rust)"
     assert source.list_buckets()[0].type == "currentwindow"
-    assert source.get_events(
-        "aw-watcher-window_test",
-        datetime(2026, 9, 10, tzinfo=timezone.utc),
-        datetime(2026, 9, 11, tzinfo=timezone.utc),
-    )[0].duration_seconds == 300
+    assert (
+        source.get_events(
+            "aw-watcher-window_test",
+            datetime(2026, 9, 10, tzinfo=timezone.utc),
+            datetime(2026, 9, 11, tzinfo=timezone.utc),
+        )[0].duration_seconds
+        == 300
+    )

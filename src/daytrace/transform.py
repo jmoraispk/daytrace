@@ -9,10 +9,14 @@ from daytrace.models import ActivityRecord, SourceKind
 
 
 def _sort(records: Iterable[ActivityRecord]) -> tuple[ActivityRecord, ...]:
-    return tuple(sorted(records, key=lambda item: (item.start, item.bucket_id, item.event_id)))
+    return tuple(
+        sorted(records, key=lambda item: (item.start, item.bucket_id, item.event_id))
+    )
 
 
-def _union(intervals: Iterable[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
+def _union(
+    intervals: Iterable[tuple[datetime, datetime]],
+) -> list[tuple[datetime, datetime]]:
     merged: list[tuple[datetime, datetime]] = []
     for start, end in sorted(intervals):
         if not merged or start > merged[-1][1]:
@@ -98,7 +102,9 @@ def merge_adjacent(
             )
         else:
             bucket_records.append(item)
-    return _sort(item for bucket_records in by_bucket.values() for item in bucket_records)
+    return _sort(
+        item for bucket_records in by_bucket.values() for item in bucket_records
+    )
 
 
 def partition_window_seconds(
@@ -112,4 +118,6 @@ def partition_window_seconds(
         if candidates:
             winner = min(candidates, key=lambda item: (item.bucket_id, item.event_id))
             totals[winner] += (end - start).total_seconds()
-    return tuple(sorted(totals.items(), key=lambda pair: (pair[0].bucket_id, pair[0].event_id)))
+    return tuple(
+        sorted(totals.items(), key=lambda pair: (pair[0].bucket_id, pair[0].event_id))
+    )

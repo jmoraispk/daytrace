@@ -44,7 +44,9 @@ def normalize_events(
 
     for event in events:
         if event.timestamp.tzinfo is None:
-            warn(f"skipped naive timestamp for event {event.id!r} in bucket {bucket.id!r}")
+            warn(
+                f"skipped naive timestamp for event {event.id!r} in bucket {bucket.id!r}"
+            )
             continue
         raw_start = event.timestamp.astimezone(timezone.utc)
         start = max(raw_start, window_start)
@@ -69,4 +71,6 @@ def normalize_events(
             )
         )
 
-    return tuple(sorted(normalized, key=lambda item: (item.start, item.bucket_id, item.event_id)))
+    return tuple(
+        sorted(normalized, key=lambda item: (item.start, item.bucket_id, item.event_id))
+    )

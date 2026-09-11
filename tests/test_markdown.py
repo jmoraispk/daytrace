@@ -25,7 +25,9 @@ def test_render_markdown_matches_golden_file(make_record) -> None:
     )
 
     markdown = render_markdown(
-        build_report(date(2026, 9, 10), window, (window_record, browser_record), "daytrace")
+        build_report(
+            date(2026, 9, 10), window, (window_record, browser_record), "daytrace"
+        )
     )
 
     expected = Path("tests/golden/daytrace-2026-09-10.md").read_text(encoding="utf-8")
