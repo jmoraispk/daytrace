@@ -5,7 +5,9 @@ searchable text journal. Screen, microphone, keyboard activity, and system
 context are independent opt-ins. Captured media is processed ephemerally and
 discarded; the durable record contains text and structured metadata only.
 
-This repository is currently in the product and architecture planning phase.
+This repository now includes a headless ActivityWatch summary prototype. The
+broader cross-platform capture application remains in the product and
+architecture planning phase.
 
 ## ActivityWatch summary prototype
 
