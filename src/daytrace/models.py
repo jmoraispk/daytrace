@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Mapping
@@ -84,3 +84,20 @@ class ActivityRecord:
             self.language,
             self.status,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicationTotal:
+    app: str
+    seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityReport:
+    day: date
+    timezone_name: str
+    project: str | None
+    active_seconds: float | None
+    sources: tuple[SourceKind, ...]
+    timeline: tuple[ActivityRecord, ...]
+    applications: tuple[ApplicationTotal, ...]
