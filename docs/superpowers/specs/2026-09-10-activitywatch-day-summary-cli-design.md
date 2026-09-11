@@ -148,12 +148,21 @@ content are merged when the gap is at most 60 seconds. Records from different
 watchers are never added together as independent durations because they can
 overlap.
 
+For overview and application totals, overlapping current-window records are
+partitioned at every start and end boundary. Each segment is assigned to the
+covering record ordered first by bucket ID and event ID. This deterministic
+tie-breaker prevents multi-bucket data from inflating total time; multi-device
+selection remains deferred.
+
 ## Deterministic Markdown
 
 Given identical API responses, command arguments, and timezone data, the CLI
 must produce byte-identical output. It uses fixed headings, field order,
 sorting, duration rounding, and escaping. It contains no generation timestamp
 and makes no LLM call.
+
+Files written with `--output` use UTF-8 without a byte-order mark and LF line
+endings on every operating system.
 
 Example shape:
 
@@ -229,6 +238,8 @@ the command and ingest its Markdown without changing extraction semantics.
   console entry point.
 - Runtime dependency on `aw-client`; its compatible version range is recorded
   in `pyproject.toml` and the exact development version in `uv.lock`.
+- Runtime dependency on `tzlocal` to discover the system's IANA timezone name
+  consistently across supported operating systems.
 - Conditional `tzdata` dependency on platforms such as Windows that do not
   provide an IANA timezone database.
 - Standard-library `argparse`, `datetime`, `zoneinfo`, and `urllib.parse` for
