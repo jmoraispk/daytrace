@@ -1,4 +1,5 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
+from math import isclose
 
 import pytest
 
@@ -152,3 +153,35 @@ def test_compaction_aggregates_labels_and_conserves_duration_and_membership(
         ("ChatGPT", 2),
     ]
     assert second == first
+
+
+def test_fractional_durations_survive_regrouping_roundoff(
+    make_bundle, make_session, make_slice
+) -> None:
+    sessions = (
+        replace(
+            _repo_session(make_session, make_slice, "session-001", 0, "alpha"),
+            active_seconds=0.1,
+            focused_seconds=0.1,
+        ),
+        replace(
+            _repo_session(make_session, make_slice, "session-002", 10, "beta"),
+            active_seconds=0.1,
+            focused_seconds=0.1,
+        ),
+        replace(
+            _repo_session(make_session, make_slice, "session-003", 11, "beta"),
+            active_seconds=1.1,
+            focused_seconds=1.1,
+        ),
+    )
+    source = _bundle(make_bundle, sessions)
+
+    result = compact_sessions(source)
+
+    assert isclose(
+        sum(item.active_seconds for item in result.episodes),
+        sum(item.active_seconds for item in result.sessions),
+        rel_tol=1e-12,
+        abs_tol=1e-9,
+    )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from datetime import timedelta
+from math import isclose
 
 from daytrace.models import (
     ActivityAnchor,
@@ -232,8 +233,11 @@ def compact_sessions(bundle: SessionBundle) -> EpisodeBundle:
         expected_members
     ):
         raise EpisodeInvariantError("episode membership was not conserved")
-    if sum(item.active_seconds for item in episodes) != sum(
-        item.active_seconds for item in sessions
+    if not isclose(
+        sum(item.active_seconds for item in episodes),
+        sum(item.active_seconds for item in sessions),
+        rel_tol=1e-12,
+        abs_tol=1e-9,
     ):
         raise EpisodeInvariantError("episode duration was not conserved")
     return EpisodeBundle(
