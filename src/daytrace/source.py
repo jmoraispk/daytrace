@@ -109,5 +109,5 @@ class AwClientSource:
             )
         except Exception as exc:
             raise ActivityWatchConnectionError(
-                f"ActivityWatch event request failed for bucket {bucket_id!r}"
+                "ActivityWatch event request failed"
             ) from exc

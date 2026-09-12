@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 from daytrace.diagnostics import DiagnosticCollector
 from daytrace.models import SourceKind
 from daytrace.sanitize import sanitize_generated_text, sanitize_records
@@ -56,3 +58,31 @@ def test_retains_bounded_repository_and_merge_request_paths(make_record) -> None
 
 def test_generated_text_gets_a_second_secret_scan() -> None:
     assert sanitize_generated_text("token=abcdefghijklmnop") == "[redacted-secret]"
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "code_challenge=abcdefghijklmnop",
+        "session_state=abcdefghijklmnop",
+        "api_key=abcdefghijklmnop",
+    ),
+)
+def test_generated_text_scans_common_credential_fields(value: str) -> None:
+    assert sanitize_generated_text(value) == "[redacted-secret]"
+
+
+def test_editor_paths_are_minimized_before_leaving_sanitizer(make_record) -> None:
+    record = make_record(
+        0,
+        5,
+        kind=SourceKind.EDITOR,
+        project="C:/Users/joaom/private/daytrace",
+        file="C:/Users/joaom/private/daytrace/main.py",
+    )
+
+    sanitized = sanitize_records((record,), lambda code: None)
+
+    assert sanitized[0].project == "daytrace"
+    assert sanitized[0].file == "main.py"
+    assert "Users" not in repr(sanitized)

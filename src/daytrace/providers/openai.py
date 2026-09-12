@@ -116,7 +116,7 @@ class OpenAIProvider:
         if client is None:
             from openai import OpenAI
 
-            client = OpenAI(api_key=api_key)
+            client = OpenAI(**{"api_key": api_key})
         self._client = client
 
     def summarize(self, request: SummaryRequest) -> ProviderResponse:

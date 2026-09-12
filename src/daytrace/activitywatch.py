@@ -1,32 +1,32 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from collections.abc import Callable
 from datetime import date, timezone
 
 from daytrace.diagnostics import DiagnosticCollector, diagnostic_messages
-from daytrace.markdown import render_markdown
-from daytrace.models import DiagnosticCode
+from daytrace.fusion import fuse_observations
+from daytrace.markdown import render_session_markdown
+from daytrace.models import DiagnosticCode, SessionBundle
 from daytrace.normalize import SUPPORTED_BUCKET_TYPES, normalize_events
-from daytrace.report import build_report
+from daytrace.sanitize import sanitize_records
+from daytrace.sessionize import sessionize
 from daytrace.source import ActivitySource, AwClientSource
 from daytrace.time import resolve_day
-from daytrace.transform import filter_project, merge_adjacent, remove_afk
+from daytrace.transform import remove_afk
 
 
 DEFAULT_SERVER = "http://127.0.0.1:5600"
 
 
-def summarize_day(
+def collect_day(
     day: date,
-    project: str | None = None,
     *,
     server: str = DEFAULT_SERVER,
     timezone_name: str | None = None,
     source: ActivitySource | None = None,
-    warn: Callable[[str], None] | None = None,
-) -> str:
-    warning = warn or logging.getLogger("daytrace").warning
+) -> SessionBundle:
     diagnostics = DiagnosticCollector()
     window = resolve_day(day, timezone_name)
     activity_source = source or AwClientSource.from_url(server)
@@ -53,7 +53,34 @@ def summarize_day(
             diagnostics.add,
         )
     )
-    transformed = merge_adjacent(filter_project(remove_afk(records), project))
-    for message in diagnostic_messages(diagnostics.snapshot()):
+    active = remove_afk(records)
+    sanitized = sanitize_records(active, diagnostics.add)
+    slices = fuse_observations(sanitized, diagnostics.add)
+    return sessionize(day, window, slices, diagnostics.snapshot())
+
+
+def summarize_day(
+    day: date,
+    project: str | None = None,
+    *,
+    server: str = DEFAULT_SERVER,
+    timezone_name: str | None = None,
+    source: ActivitySource | None = None,
+    warn: Callable[[str], None] | None = None,
+) -> str:
+    if project is not None:
+        warnings.warn(
+            "project filtering is deprecated; map workstreams downstream",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    bundle = collect_day(
+        day,
+        server=server,
+        timezone_name=timezone_name,
+        source=source,
+    )
+    warning = warn or logging.getLogger("daytrace").warning
+    for message in diagnostic_messages(bundle.diagnostics):
         warning(message)
-    return render_markdown(build_report(day, window, transformed, project))
+    return render_session_markdown(bundle)

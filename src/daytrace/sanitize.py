@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Callable, Iterable
+from pathlib import PurePath, PureWindowsPath
 from urllib.parse import urlsplit
 
 from daytrace.models import (
@@ -18,7 +19,8 @@ EDGE_SUFFIX = re.compile(
 )
 SECRET = re.compile(
     r"(?i)(bearer\s+[A-Za-z0-9._~-]+|"
-    r"(?:api[_-]?key|token|code|state)\s*[=:]\s*[A-Za-z0-9._~-]{12,})"
+    r"(?:api[_-]?key|code[_-]?challenge|session[_-]?state|"
+    r"password[_-]?reset|token|code|state)\s*[=:]\s*[A-Za-z0-9._~-]{12,})"
 )
 AUTH_HOST_PARTS = ("login.", "auth.", "accounts.")
 AUTH_PATH_PARTS = (
@@ -84,6 +86,23 @@ def sanitize_generated_text(value: str) -> str:
     return SECRET.sub("[redacted-secret]", EMAIL.sub("[redacted-email]", compact))
 
 
+def _safe_path_text(
+    value: str | None, diagnose: Callable[[DiagnosticCode], None]
+) -> str | None:
+    cleaned = _safe_text(value, diagnose)
+    if not cleaned:
+        return None
+    path = (
+        PureWindowsPath(cleaned)
+        if "\\" in cleaned or ":" in cleaned
+        else PurePath(cleaned)
+    )
+    basename = path.name or None
+    if basename != cleaned:
+        diagnose(DiagnosticCode.SANITIZED_FIELD)
+    return basename
+
+
 def sanitize_records(
     records: Iterable[ActivityRecord],
     diagnose: Callable[[DiagnosticCode], None],
@@ -100,8 +119,8 @@ def sanitize_records(
                 end=item.end,
                 app=_safe_text(item.app, diagnose),
                 title=_safe_text(item.title, diagnose),
-                project=_safe_text(item.project, diagnose),
-                file=_safe_text(item.file, diagnose),
+                project=_safe_path_text(item.project, diagnose),
+                file=_safe_path_text(item.file, diagnose),
                 url_host=host,
                 url_path=_safe_path(host, item.url_path),
                 language=_safe_text(item.language, diagnose),
