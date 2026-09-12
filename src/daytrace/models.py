@@ -122,6 +122,33 @@ class SanitizedObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class ContextSignal:
+    kind: SourceKind
+    evidence_id: str
+    title: str | None = None
+    project: str | None = None
+    file: str | None = None
+    url_host: str | None = None
+    url_path: str | None = None
+    language: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ActivitySlice:
+    start: datetime
+    end: datetime
+    focused: bool
+    app: str | None
+    title: str | None
+    contexts: tuple[ContextSignal, ...]
+    evidence_ids: tuple[str, ...]
+
+    @property
+    def duration_seconds(self) -> float:
+        return (self.end - self.start).total_seconds()
+
+
+@dataclass(frozen=True, slots=True)
 class ApplicationTotal:
     app: str
     seconds: float

@@ -2,7 +2,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from daytrace.models import ActivityRecord, SanitizedObservation, SourceKind
+from daytrace.models import (
+    ActivityRecord,
+    ActivitySlice,
+    ContextSignal,
+    SanitizedObservation,
+    SourceKind,
+)
 
 
 @pytest.fixture
@@ -76,6 +82,34 @@ def make_sanitized():
             url_host=url_host,
             url_path=url_path,
             language=language,
+        )
+
+    return factory
+
+
+@pytest.fixture
+def make_slice():
+    def factory(
+        start_minute: int,
+        duration_minutes: int,
+        *,
+        focused: bool = True,
+        app: str | None = "Code",
+        title: str | None = "daytrace",
+        contexts: tuple[ContextSignal, ...] = (),
+        evidence_ids: tuple[str, ...] = ("evidence-0001",),
+    ) -> ActivitySlice:
+        start = datetime(2026, 9, 10, 9, tzinfo=timezone.utc) + timedelta(
+            minutes=start_minute
+        )
+        return ActivitySlice(
+            start=start,
+            end=start + timedelta(minutes=duration_minutes),
+            focused=focused,
+            app=app,
+            title=title,
+            contexts=contexts,
+            evidence_ids=evidence_ids,
         )
 
     return factory
