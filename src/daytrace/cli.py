@@ -18,12 +18,15 @@ from daytrace.diagnostics import diagnostic_messages
 from daytrace.episode import compact_sessions
 from daytrace.json_output import render_digest_json, render_episode_json
 from daytrace.markdown import render_digest_markdown, render_episode_markdown
+from daytrace.models import ProviderFailureKind
 from daytrace.providers import OpenAIProvider, SummaryProviderError
 from daytrace.source import ActivityWatchConnectionError
 from daytrace.summarize import (
+    EpisodeRequestTooLarge,
+    MergeRequestTooLarge,
     SummaryRequestTooLarge,
     SummaryValidationError,
-    build_summary_request,
+    build_summary_plan,
     summarize_bundle,
 )
 
@@ -160,19 +163,28 @@ def _render_diagnostics(bundle, output_format: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _openai_summary(bundle, api_key: str, model: str):
-    return summarize_bundle(bundle, OpenAIProvider(api_key, model))
+def _openai_summary(bundle, api_key: str, model: str, plan):
+    return summarize_bundle(bundle, OpenAIProvider(api_key, model), plan)
 
 
-def _confirm_cloud_send(request, provider: str, model: str, assume_yes: bool) -> bool:
-    count = len(request.episode_ids)
+def _confirm_cloud_send(plan, provider: str, model: str, assume_yes: bool) -> bool:
+    count = plan.episode_count
     noun = "episode" if count == 1 else "episodes"
     print(
-        f"About to send {count} compact {noun} "
-        f"({request.character_count} characters) to {provider}/{model}.",
+        f"About to send {count} compact {noun} to {provider}/{model}.",
         file=sys.stderr,
     )
-    categories = ", ".join(request.data_categories) or "none"
+    chunks = len(plan.requests)
+    if chunks == 1:
+        call_description = "1 summary call"
+    else:
+        call_description = f"{chunks} summary chunks plus 1 merge call"
+    print(
+        f"Planned calls: {call_description}; {plan.input_character_count} "
+        "characters total initial input.",
+        file=sys.stderr,
+    )
+    categories = ", ".join(plan.data_categories) or "none"
     print(f"Included categories: {categories}.", file=sys.stderr)
     if assume_yes:
         return True
@@ -180,6 +192,26 @@ def _confirm_cloud_send(request, provider: str, model: str, assume_yes: bool) ->
         return input("Continue? [y/N] ").strip().casefold() in {"y", "yes"}
     except (EOFError, KeyboardInterrupt):
         return False
+
+
+def _summary_failure_message(exc: Exception) -> str:
+    if isinstance(exc, EpisodeRequestTooLarge):
+        reason = "one compact episode exceeds the safe request limit"
+    elif isinstance(exc, MergeRequestTooLarge):
+        reason = "the compact merge request exceeds the safe request limit"
+    elif isinstance(exc, SummaryProviderError):
+        reason = {
+            ProviderFailureKind.AUTHENTICATION: "authentication, access, or billing failed",
+            ProviderFailureKind.RATE_LIMIT: "the provider rate limit or quota was reached",
+            ProviderFailureKind.NETWORK: "a network failure occurred",
+            ProviderFailureKind.SERVICE: "the provider service unavailable",
+            ProviderFailureKind.REQUEST: "the provider rejected the request",
+        }.get(exc.kind, "the provider request failed")
+    elif isinstance(exc, SummaryValidationError):
+        reason = "the provider returned an invalid structured response"
+    else:
+        reason = "the compact activity request exceeds the safe request limit"
+    return f"warning: AI summary unavailable because {reason}; using deterministic fallback"
 
 
 def _collect(args: argparse.Namespace):
@@ -223,8 +255,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     deterministic_fallback = _render_deterministic(bundle, args)
     try:
-        request = build_summary_request(bundle)
-        if not _confirm_cloud_send(request, args.provider, args.model, args.yes):
+        plan = build_summary_plan(bundle)
+        if not _confirm_cloud_send(plan, args.provider, args.model, args.yes):
             print("error: cloud summary was not confirmed", file=sys.stderr)
             return 1
         try:
@@ -235,7 +267,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not api_key:
             print("error: OpenAI API key is required", file=sys.stderr)
             return 1
-        digest, provenance = _openai_summary(bundle, api_key, args.model)
+        digest, provenance = _openai_summary(bundle, api_key, args.model, plan)
         rendered = (
             render_digest_json(bundle, digest, provenance, details=args.details)
             if args.format == "json"
@@ -243,11 +275,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 bundle, digest, provenance, details=args.details
             )
         )
-    except (SummaryProviderError, SummaryValidationError, SummaryRequestTooLarge):
-        print(
-            "warning: AI summary unavailable; using deterministic fallback",
-            file=sys.stderr,
-        )
+    except (SummaryProviderError, SummaryValidationError, SummaryRequestTooLarge) as exc:
+        print(_summary_failure_message(exc), file=sys.stderr)
         return 2 if _emit(deterministic_fallback, args.output) else 1
 
     return 0 if _emit(rendered, args.output) else 1

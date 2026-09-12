@@ -332,6 +332,8 @@ def render_digest_markdown(
     episode_by_id = {item.episode_id: item for item in bundle.episodes}
     zone = ZoneInfo(bundle.timezone_name)
     lines = _digest_header(bundle, provenance)
+    if details:
+        lines.append(f"Provider requests: {provenance.request_count}")
     for workstream in digest.workstreams:
         episodes = tuple(episode_by_id[item] for item in workstream.episode_ids)
         seconds = sum(item.active_seconds for item in episodes)

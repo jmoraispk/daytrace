@@ -91,6 +91,15 @@ def test_render_workstream_digest_matches_golden(
     assert "Inferred workstream" in rendered
 
 
+def test_digest_details_include_provider_request_count(
+    make_episode_bundle, make_digest, make_provenance
+) -> None:
+    rendered = render_digest_markdown(
+        make_episode_bundle(), make_digest(), make_provenance(4), details=True
+    )
+    assert "Provider requests: 4" in rendered
+
+
 def test_empty_report_is_valid_markdown() -> None:
     report = build_report(
         date(2026, 9, 10), resolve_day(date(2026, 9, 10), "UTC"), (), None

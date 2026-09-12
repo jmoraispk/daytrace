@@ -9,8 +9,14 @@ from zoneinfo import ZoneInfoNotFoundError
 import pytest
 
 from daytrace import cli
+from daytrace.models import ProviderFailureKind
 from daytrace.providers import SummaryProviderError
 from daytrace.source import ActivityWatchConnectionError
+from daytrace.summarize import (
+    EpisodeRequestTooLarge,
+    MergeRequestTooLarge,
+    SummaryValidationError,
+)
 
 
 def test_module_help_is_available() -> None:
@@ -127,10 +133,17 @@ def test_ai_requires_explicit_provider_and_model(capsys) -> None:
 
 
 def test_cloud_disclosure_precedes_hidden_key_and_provider_call(
-    monkeypatch, capsys, make_bundle, make_digest, make_provenance
+    monkeypatch,
+    capsys,
+    make_episode_bundle,
+    make_summary_plan,
+    make_digest,
+    make_provenance,
 ) -> None:
     calls = []
-    monkeypatch.setattr(cli, "collect_day", lambda *a, **k: make_bundle())
+    plan = make_summary_plan(chunk_count=3, episode_count=437)
+    monkeypatch.setattr(cli, "collect_day", lambda *a, **k: make_episode_bundle())
+    monkeypatch.setattr(cli, "build_summary_plan", lambda bundle: plan)
     monkeypatch.setattr(
         cli, "input", lambda prompt: calls.append(("confirm", prompt)) or "y"
     )
@@ -142,9 +155,9 @@ def test_cloud_disclosure_precedes_hidden_key_and_provider_call(
     monkeypatch.setattr(
         cli,
         "_openai_summary",
-        lambda *a, **k: (
-            calls.append(("provider", "called"))
-            or (make_digest(), make_provenance())
+        lambda bundle, key, model, resolved_plan: (
+            calls.append(("summary", model))
+            or (make_digest(), make_provenance(4))
         ),
     )
 
@@ -164,10 +177,68 @@ def test_cloud_disclosure_precedes_hidden_key_and_provider_call(
 
     captured = capsys.readouterr()
     assert status == 0
-    assert [item[0] for item in calls] == ["confirm", "key", "provider"]
+    assert [item[0] for item in calls] == ["confirm", "key", "summary"]
     assert "openai" in captured.err
-    assert "1 compact episode" in captured.err
+    assert "437 compact episodes" in captured.err
+    assert "3 summary chunks plus 1 merge call" in captured.err
+    assert "total initial input" in captured.err
     assert "secret" not in captured.out + captured.err
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        (EpisodeRequestTooLarge(), "one compact episode exceeds"),
+        (MergeRequestTooLarge(), "compact merge request exceeds"),
+        (
+            SummaryProviderError(ProviderFailureKind.AUTHENTICATION),
+            "authentication, access, or billing",
+        ),
+        (SummaryProviderError(ProviderFailureKind.RATE_LIMIT), "rate limit or quota"),
+        (SummaryProviderError(ProviderFailureKind.NETWORK), "network"),
+        (SummaryProviderError(ProviderFailureKind.SERVICE), "service unavailable"),
+        (SummaryValidationError("invalid"), "invalid structured response"),
+    ],
+)
+def test_ai_failure_is_specific_content_free_and_falls_back(
+    failure,
+    message,
+    monkeypatch,
+    capsys,
+    make_episode_bundle,
+    make_summary_plan,
+) -> None:
+    monkeypatch.setattr(cli, "collect_day", lambda *a, **k: make_episode_bundle())
+    monkeypatch.setattr(
+        cli, "build_summary_plan", lambda bundle: make_summary_plan()
+    )
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: "runtime-secret")
+    monkeypatch.setattr(
+        cli,
+        "_openai_summary",
+        lambda bundle, key, model, plan: (_ for _ in ()).throw(failure),
+    )
+
+    status = cli.main(
+        [
+            "activitywatch",
+            "--date",
+            "2026-09-10",
+            "--summary",
+            "ai",
+            "--provider",
+            "openai",
+            "--model",
+            "model",
+            "--yes",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert status == 2
+    assert message in captured.err
+    assert "runtime-secret" not in captured.out + captured.err
+    assert "Summary: Deterministic activity episodes" in captured.out
 
 
 def test_ai_failure_writes_deterministic_fallback_and_returns_two(

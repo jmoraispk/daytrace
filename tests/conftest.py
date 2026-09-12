@@ -94,6 +94,30 @@ def make_many_episode_bundle(make_episode, make_episode_bundle):
 
 
 @pytest.fixture
+def make_summary_plan(make_episode_bundle):
+    def factory(chunk_count: int = 1, episode_count: int = 1):
+        from daytrace.summarize import build_summary_plan
+
+        base = build_summary_plan(make_episode_bundle())
+        requests = tuple(
+            replace(
+                base.requests[0],
+                character_count=base.requests[0].character_count + index,
+            )
+            for index in range(chunk_count)
+        )
+        return replace(
+            base,
+            requests=requests,
+            episode_count=episode_count,
+            input_character_count=sum(item.character_count for item in requests),
+            planned_request_count=chunk_count + (1 if chunk_count > 1 else 0),
+        )
+
+    return factory
+
+
+@pytest.fixture
 def make_record():
     def factory(
         start_minute: int,
