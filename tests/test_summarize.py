@@ -2,15 +2,153 @@ import json
 
 import pytest
 
-from daytrace.models import Confidence, OutcomeStrength, ProviderResponse
+from daytrace.models import (
+    Confidence,
+    OutcomeStrength,
+    OutcomeSummary,
+    ProviderResponse,
+    WorkstreamDigest,
+    WorkstreamSummary,
+)
 from daytrace.summarize import (
     PROMPT_SCHEMA,
     SummaryValidationError,
+    EpisodeRequestTooLarge,
+    MergeRequestTooLarge,
     build_summary_plan,
+    build_merge_request,
+    validate_merge,
     build_summary_request,
     summarize_bundle,
     validate_digest,
 )
+
+
+def test_large_plan_partitions_only_at_episode_boundaries(
+    make_many_episode_bundle,
+) -> None:
+    bundle = make_many_episode_bundle()
+    plan = build_summary_plan(bundle, target_characters=800, max_characters=1000)
+    assert len(plan.requests) > 1
+    assert plan.planned_request_count == len(plan.requests) + 1
+    assert all(request.character_count <= 1000 for request in plan.requests)
+    assert [
+        episode_id for request in plan.requests for episode_id in request.episode_ids
+    ] == [item.episode_id for item in bundle.episodes]
+
+
+def test_merge_validation_requires_every_provisional_id_once() -> None:
+    payload = {
+        "schema": "daytrace.workstream-merge.v1",
+        "groups": [
+            {
+                "label": "Work",
+                "confidence": "high",
+                "provisional_ids": ["provisional-001-001"],
+            }
+        ],
+    }
+    groups = validate_merge(payload, {"provisional-001-001"})
+    assert groups[0].provisional_ids == ("provisional-001-001",)
+
+    payload["groups"][0]["provisional_ids"].append("provisional-001-001")
+    with pytest.raises(SummaryValidationError):
+        validate_merge(payload, {"provisional-001-001"})
+
+
+def test_chunk_merge_copies_outcomes_and_counts_every_request(
+    make_many_episode_bundle,
+) -> None:
+    bundle = make_many_episode_bundle()
+    plan = build_summary_plan(bundle, target_characters=800, max_characters=1000)
+
+    class Provider:
+        def __init__(self):
+            self.calls = []
+
+        def summarize(self, request):
+            self.calls.append(request)
+            index = len(self.calls)
+            return ProviderResponse(
+                {
+                    "schema": "daytrace.workstream-digest.v2",
+                    "workstreams": [
+                        {
+                            "label": f"Chunk {index}",
+                            "confidence": "medium",
+                            "episode_ids": list(request.episode_ids),
+                            "topics": [],
+                            "outcomes": [
+                                {
+                                    "text": f"Observed state {index}",
+                                    "strength": "observed",
+                                    "evidence": [request.episode_ids[0]],
+                                }
+                            ],
+                        }
+                    ],
+                    "unassigned_episode_ids": [],
+                },
+                "test",
+                "fixed",
+                10,
+                5,
+            )
+
+        def merge(self, request):
+            self.calls.append(request)
+            return ProviderResponse(
+                {
+                    "schema": "daytrace.workstream-merge.v1",
+                    "groups": [
+                        {
+                            "label": "Combined work",
+                            "confidence": "high",
+                            "provisional_ids": list(request.provisional_ids),
+                        }
+                    ],
+                },
+                "test",
+                "fixed",
+                7,
+                3,
+            )
+
+    provider = Provider()
+    digest, provenance = summarize_bundle(bundle, provider, plan)
+
+    assert provenance.request_count == len(plan.requests) + 1 == len(provider.calls)
+    assert len(digest.workstreams[0].outcomes) == len(plan.requests)
+    assert {item.text for item in digest.workstreams[0].outcomes} == {
+        f"Observed state {index}" for index in range(1, len(plan.requests) + 1)
+    }
+    assert provenance.input_tokens == len(plan.requests) * 10 + 7
+
+
+def test_rejects_individually_oversized_episode(make_many_episode_bundle) -> None:
+    with pytest.raises(EpisodeRequestTooLarge):
+        build_summary_plan(
+            make_many_episode_bundle(1, label_size=500),
+            target_characters=200,
+            max_characters=200,
+        )
+
+
+def test_rejects_oversized_merge_request() -> None:
+    digest = WorkstreamDigest(
+        (
+            WorkstreamSummary(
+                "x" * 500,
+                Confidence.LOW,
+                ("episode-001",),
+                (),
+                (OutcomeSummary("state", OutcomeStrength.OBSERVED, ("episode-001",)),),
+            ),
+        ),
+        (),
+    )
+    with pytest.raises(MergeRequestTooLarge):
+        build_merge_request((digest,), max_characters=100)
 
 
 def test_summary_plan_contains_minimized_episodes(make_episode_bundle) -> None:

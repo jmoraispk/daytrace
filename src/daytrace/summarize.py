@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 from daytrace.cloud_privacy import minimize_cloud_text, minimize_cloud_title
@@ -10,6 +11,8 @@ from daytrace.models import (
     ActivityEpisode,
     Confidence,
     EpisodeBundle,
+    MergeGroup,
+    MergeRequest,
     OutcomeStrength,
     OutcomeSummary,
     ProviderResponse,
@@ -29,6 +32,7 @@ PROMPT_SCHEMA = "daytrace.workstream-prompt.v2"
 REQUEST_SCHEMA = "daytrace.summary-request.v2"
 DIGEST_SCHEMA = "daytrace.workstream-digest.v2"
 MAX_REQUEST_CHARACTERS = 100_000
+TARGET_REQUEST_CHARACTERS = 80_000
 CATEGORY_ORDER = ("anchor", "application", "activity-label", "outcome-signal")
 
 
@@ -40,6 +44,10 @@ class EpisodeRequestTooLarge(SummaryRequestTooLarge):
     """One compact episode cannot fit in a bounded provider request."""
 
 
+class MergeRequestTooLarge(SummaryRequestTooLarge):
+    """The constrained merge request exceeds the provider-input ceiling."""
+
+
 class SummaryValidationError(RuntimeError):
     """A provider response does not match the workstream schema."""
 
@@ -47,6 +55,8 @@ class SummaryValidationError(RuntimeError):
 @runtime_checkable
 class SummaryProvider(Protocol):
     def summarize(self, request: SummaryRequest) -> ProviderResponse: ...
+
+    def merge(self, request: MergeRequest) -> ProviderResponse: ...
 
 
 def _clean_items(items: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -139,17 +149,41 @@ def _episodes(bundle: EpisodeBundle | SessionBundle) -> EpisodeBundle:
     return bundle if isinstance(bundle, EpisodeBundle) else compact_sessions(bundle)
 
 
-def build_summary_plan(bundle: EpisodeBundle | SessionBundle) -> SummaryPlan:
+def build_summary_plan(
+    bundle: EpisodeBundle | SessionBundle,
+    *,
+    target_characters: int = TARGET_REQUEST_CHARACTERS,
+    max_characters: int = MAX_REQUEST_CHARACTERS,
+) -> SummaryPlan:
     resolved = _episodes(bundle)
-    request = _request_for_episodes(resolved, resolved.episodes)
-    if request.character_count > MAX_REQUEST_CHARACTERS:
-        raise SummaryRequestTooLarge()
+    groups: list[list[ActivityEpisode]] = []
+    current: list[ActivityEpisode] = []
+    for episode in resolved.episodes:
+        candidate = (*current, episode)
+        candidate_request = _request_for_episodes(resolved, candidate)
+        if current and candidate_request.character_count > target_characters:
+            groups.append(current)
+            current = [episode]
+        else:
+            current.append(episode)
+        if _request_for_episodes(resolved, current).character_count > max_characters:
+            raise EpisodeRequestTooLarge()
+    if current or not groups:
+        groups.append(current)
+    requests = tuple(_request_for_episodes(resolved, group) for group in groups)
+    if any(request.character_count > max_characters for request in requests):
+        raise EpisodeRequestTooLarge()
+    categories = tuple(
+        item
+        for item in CATEGORY_ORDER
+        if any(item in request.data_categories for request in requests)
+    )
     return SummaryPlan(
-        requests=(request,),
+        requests=requests,
         episode_count=len(resolved.episodes),
-        input_character_count=request.character_count,
-        planned_request_count=1,
-        data_categories=request.data_categories,
+        input_character_count=sum(item.character_count for item in requests),
+        planned_request_count=len(requests) + (1 if len(requests) > 1 else 0),
+        data_categories=categories,
     )
 
 
@@ -289,6 +323,145 @@ def validate_digest(
     return WorkstreamDigest(tuple(workstreams), unassigned)
 
 
+def build_merge_request(
+    digests: tuple[WorkstreamDigest, ...],
+    *,
+    max_characters: int = MAX_REQUEST_CHARACTERS,
+) -> tuple[MergeRequest, Mapping[str, WorkstreamSummary]]:
+    provisional: dict[str, WorkstreamSummary] = {}
+    items: list[dict[str, object]] = []
+    for chunk_index, digest in enumerate(digests, start=1):
+        for stream_index, workstream in enumerate(digest.workstreams, start=1):
+            provisional_id = f"provisional-{chunk_index:03d}-{stream_index:03d}"
+            provisional[provisional_id] = workstream
+            items.append(
+                {
+                    "id": provisional_id,
+                    "label": workstream.label,
+                    "confidence": workstream.confidence.value,
+                    "episode_ids": list(workstream.episode_ids),
+                    "topics": [
+                        {"text": item.text, "evidence": list(item.evidence)}
+                        for item in workstream.topics
+                    ],
+                    "outcomes": [
+                        {
+                            "text": item.text,
+                            "strength": item.strength.value,
+                            "evidence": list(item.evidence),
+                        }
+                        for item in workstream.outcomes
+                    ],
+                }
+            )
+    payload: dict[str, object] = {
+        "schema": "daytrace.workstream-merge-request.v1",
+        "provisional_workstreams": items,
+    }
+    character_count = len(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    if character_count > max_characters:
+        raise MergeRequestTooLarge()
+    request = MergeRequest(
+        schema="daytrace.workstream-merge-request.v1",
+        pass_kind=SummaryPass.MERGE,
+        payload=payload,
+        character_count=character_count,
+        provisional_ids=tuple(provisional),
+    )
+    return request, MappingProxyType(provisional)
+
+
+def validate_merge(
+    payload: Mapping[str, object], allowed: set[str]
+) -> tuple[MergeGroup, ...]:
+    root = _object(payload, "merge response", {"schema", "groups"})
+    if root["schema"] != "daytrace.workstream-merge.v1":
+        raise SummaryValidationError("invalid merge schema")
+    groups: list[MergeGroup] = []
+    allocated: list[str] = []
+    for index, raw_group in enumerate(_list(root["groups"], "groups", 30)):
+        field = f"groups[{index}]"
+        value = _object(
+            raw_group, field, {"label", "confidence", "provisional_ids"}
+        )
+        provisional_ids = _ids(
+            value["provisional_ids"], allowed, f"{field}.provisional_ids"
+        )
+        allocated.extend(provisional_ids)
+        try:
+            confidence = Confidence(
+                _bounded_text(value["confidence"], f"{field}.confidence", 20)
+            )
+        except ValueError:
+            raise SummaryValidationError(f"invalid {field}.confidence") from None
+        groups.append(
+            MergeGroup(
+                label=_bounded_text(value["label"], f"{field}.label", 120),
+                confidence=confidence,
+                provisional_ids=provisional_ids,
+            )
+        )
+    if len(allocated) != len(set(allocated)) or set(allocated) != allowed:
+        raise SummaryValidationError("invalid provisional allocation")
+    return tuple(groups)
+
+
+def assemble_merged_digest(
+    groups: tuple[MergeGroup, ...],
+    provisional: Mapping[str, WorkstreamSummary],
+    chunks: tuple[WorkstreamDigest, ...],
+) -> WorkstreamDigest:
+    workstreams: list[WorkstreamSummary] = []
+    for group in groups:
+        selected = tuple(provisional[item] for item in group.provisional_ids)
+        workstreams.append(
+            WorkstreamSummary(
+                label=group.label,
+                confidence=group.confidence,
+                episode_ids=tuple(
+                    episode_id
+                    for item in selected
+                    for episode_id in item.episode_ids
+                ),
+                topics=tuple(
+                    dict.fromkeys(topic for item in selected for topic in item.topics)
+                ),
+                outcomes=tuple(
+                    dict.fromkeys(
+                        outcome for item in selected for outcome in item.outcomes
+                    )
+                ),
+            )
+        )
+    unassigned = tuple(
+        dict.fromkeys(
+            episode_id
+            for chunk in chunks
+            for episode_id in chunk.unassigned_episode_ids
+        )
+    )
+    return WorkstreamDigest(tuple(workstreams), unassigned)
+
+
+def validate_final_allocation(digest: WorkstreamDigest, allowed: set[str]) -> None:
+    allocated = [
+        episode_id
+        for workstream in digest.workstreams
+        for episode_id in workstream.episode_ids
+    ] + list(digest.unassigned_episode_ids)
+    if len(allocated) != len(set(allocated)) or set(allocated) != allowed:
+        raise SummaryValidationError("invalid final episode allocation")
+
+
+def _sum_known(values: Iterable[int | None]) -> int | None:
+    resolved = tuple(values)
+    return (
+        sum(value for value in resolved if value is not None)
+        if any(value is not None for value in resolved)
+        else None
+    )
+
+
 def summarize_bundle(
     bundle: EpisodeBundle | SessionBundle,
     provider: SummaryProvider,
@@ -296,18 +469,31 @@ def summarize_bundle(
 ) -> tuple[WorkstreamDigest, SummaryProvenance]:
     resolved_bundle = _episodes(bundle)
     resolved_plan = plan or build_summary_plan(resolved_bundle)
-    if len(resolved_plan.requests) != 1:
-        raise SummaryRequestTooLarge()
-    response = provider.summarize(resolved_plan.requests[0])
-    digest = validate_digest(
-        response.payload, set(resolved_plan.requests[0].episode_ids)
+    chunk_digests: list[WorkstreamDigest] = []
+    responses: list[ProviderResponse] = []
+    for request in resolved_plan.requests:
+        response = provider.summarize(request)
+        responses.append(response)
+        chunk_digests.append(validate_digest(response.payload, set(request.episode_ids)))
+    if len(chunk_digests) == 1:
+        digest = chunk_digests[0]
+    else:
+        merge_request, provisional = build_merge_request(tuple(chunk_digests))
+        merge_response = provider.merge(merge_request)
+        responses.append(merge_response)
+        groups = validate_merge(
+            merge_response.payload, set(merge_request.provisional_ids)
+        )
+        digest = assemble_merged_digest(groups, provisional, tuple(chunk_digests))
+    validate_final_allocation(
+        digest, {item.episode_id for item in resolved_bundle.episodes}
     )
     provenance = SummaryProvenance(
-        provider=response.provider,
-        model=response.model,
+        provider=responses[0].provider,
+        model=responses[0].model,
         prompt_schema=PROMPT_SCHEMA,
-        input_tokens=response.input_tokens,
-        output_tokens=response.output_tokens,
-        request_count=1,
+        input_tokens=_sum_known(item.input_tokens for item in responses),
+        output_tokens=_sum_known(item.output_tokens for item in responses),
+        request_count=len(responses),
     )
     return digest, provenance

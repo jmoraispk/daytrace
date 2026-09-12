@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -54,16 +55,40 @@ def make_episode():
 
 @pytest.fixture
 def make_episode_bundle(make_episode, make_bundle):
-    def factory() -> EpisodeBundle:
+    def factory(episodes=None) -> EpisodeBundle:
         sessions = make_bundle()
         return EpisodeBundle(
             day=sessions.day,
             timezone_name=sessions.timezone_name,
             focused_seconds=sessions.focused_seconds,
-            episodes=(make_episode(),),
+            episodes=tuple(episodes) if episodes is not None else (make_episode(),),
             sessions=sessions.sessions,
             diagnostics=sessions.diagnostics,
         )
+
+    return factory
+
+
+@pytest.fixture
+def make_many_episode_bundle(make_episode, make_episode_bundle):
+    def factory(count: int = 8, *, label_size: int = 160) -> EpisodeBundle:
+        base = make_episode()
+        episodes = tuple(
+            replace(
+                base,
+                episode_id=f"episode-{index:03d}",
+                start=base.start + timedelta(minutes=index * 20),
+                end=base.end + timedelta(minutes=index * 20),
+                label=f"work-{index:03d}-" + ("x" * label_size),
+                session_ids=(f"session-{index:03d}",),
+                anchors=(
+                    ActivityAnchor("repository", f"/example/work-{index:03d}"),
+                ),
+                evidence_ids=(f"evidence-{index:03d}",),
+            )
+            for index in range(1, count + 1)
+        )
+        return make_episode_bundle(episodes)
 
     return factory
 

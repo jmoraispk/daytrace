@@ -280,6 +280,22 @@ class SummaryPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class MergeRequest:
+    schema: str
+    pass_kind: SummaryPass
+    payload: Mapping[str, object]
+    character_count: int
+    provisional_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MergeGroup:
+    label: str
+    confidence: Confidence
+    provisional_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderResponse:
     payload: Mapping[str, object]
     provider: str
