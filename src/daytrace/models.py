@@ -190,6 +190,44 @@ class SessionBundle:
 
 
 @dataclass(frozen=True, slots=True)
+class ActivityAnchor:
+    kind: str
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityLabelCount:
+    value: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityEpisode:
+    episode_id: str
+    start: datetime
+    end: datetime
+    active_seconds: float
+    focused_seconds: float | None
+    label: str
+    session_ids: tuple[str, ...]
+    anchors: tuple[ActivityAnchor, ...]
+    applications: tuple[ActivityLabelCount, ...]
+    activity_labels: tuple[ActivityLabelCount, ...]
+    outcome_signals: tuple[OutcomeSignal, ...]
+    evidence_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EpisodeBundle:
+    day: date
+    timezone_name: str
+    focused_seconds: float | None
+    episodes: tuple[ActivityEpisode, ...]
+    sessions: tuple[ActivitySession, ...]
+    diagnostics: tuple[DiagnosticCount, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class TopicSummary:
     text: str
     evidence: tuple[str, ...]

@@ -3,12 +3,16 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from daytrace.models import (
+    ActivityAnchor,
+    ActivityEpisode,
+    ActivityLabelCount,
     ActivityRecord,
     ActivitySession,
     ActivitySlice,
     ContextSignal,
     DiagnosticCode,
     DiagnosticCount,
+    EpisodeBundle,
     Confidence,
     OutcomeStrength,
     OutcomeSummary,
@@ -20,6 +24,48 @@ from daytrace.models import (
     WorkstreamDigest,
     WorkstreamSummary,
 )
+
+
+@pytest.fixture
+def make_episode():
+    def factory(
+        *,
+        episode_id: str = "episode-001",
+        session_ids: tuple[str, ...] = ("session-001",),
+    ) -> ActivityEpisode:
+        start = datetime(2026, 9, 10, 9, tzinfo=timezone.utc)
+        return ActivityEpisode(
+            episode_id=episode_id,
+            start=start,
+            end=start + timedelta(minutes=10),
+            active_seconds=600,
+            focused_seconds=600,
+            label="jmoraispk/perflife",
+            session_ids=session_ids,
+            anchors=(ActivityAnchor("repository", "/jmoraispk/perflife"),),
+            applications=(ActivityLabelCount("msedge.exe", 1),),
+            activity_labels=(ActivityLabelCount("jmoraispk/perflife", 1),),
+            outcome_signals=(),
+            evidence_ids=("evidence-0001",),
+        )
+
+    return factory
+
+
+@pytest.fixture
+def make_episode_bundle(make_episode, make_bundle):
+    def factory() -> EpisodeBundle:
+        sessions = make_bundle()
+        return EpisodeBundle(
+            day=sessions.day,
+            timezone_name=sessions.timezone_name,
+            focused_seconds=sessions.focused_seconds,
+            episodes=(make_episode(),),
+            sessions=sessions.sessions,
+            diagnostics=sessions.diagnostics,
+        )
+
+    return factory
 
 
 @pytest.fixture
