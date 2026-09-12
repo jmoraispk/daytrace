@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from pathlib import PurePath, PureWindowsPath
+from collections.abc import Mapping, Sequence
 from typing import Protocol, runtime_checkable
 
+from daytrace.cloud_privacy import minimize_cloud_text, minimize_cloud_title
+from daytrace.episode import compact_sessions
 from daytrace.models import (
+    ActivityEpisode,
     Confidence,
+    EpisodeBundle,
     OutcomeStrength,
     OutcomeSummary,
     ProviderResponse,
     SessionBundle,
+    SummaryPass,
+    SummaryPlan,
     SummaryProvenance,
     SummaryRequest,
     TopicSummary,
@@ -20,14 +25,19 @@ from daytrace.models import (
 from daytrace.sanitize import sanitize_generated_text
 
 
-PROMPT_SCHEMA = "daytrace.workstream-prompt.v1"
-REQUEST_SCHEMA = "daytrace.summary-request.v1"
-DIGEST_SCHEMA = "daytrace.workstream-digest.v1"
+PROMPT_SCHEMA = "daytrace.workstream-prompt.v2"
+REQUEST_SCHEMA = "daytrace.summary-request.v2"
+DIGEST_SCHEMA = "daytrace.workstream-digest.v2"
 MAX_REQUEST_CHARACTERS = 100_000
+CATEGORY_ORDER = ("anchor", "application", "activity-label", "outcome-signal")
 
 
 class SummaryRequestTooLarge(RuntimeError):
-    """The sanitized request exceeds the fixed provider-input ceiling."""
+    """The minimized request exceeds the fixed provider-input ceiling."""
+
+
+class EpisodeRequestTooLarge(SummaryRequestTooLarge):
+    """One compact episode cannot fit in a bounded provider request."""
 
 
 class SummaryValidationError(RuntimeError):
@@ -39,107 +49,113 @@ class SummaryProvider(Protocol):
     def summarize(self, request: SummaryRequest) -> ProviderResponse: ...
 
 
-def _basename(value: str) -> str:
-    path = PureWindowsPath(value) if "\\" in value or ":" in value else PurePath(value)
-    return path.name
+def _clean_items(items: list[dict[str, object]]) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for item in items:
+        clean = {key: value for key, value in item.items() if value is not None}
+        marker = json.dumps(clean, ensure_ascii=False, sort_keys=True)
+        if clean and marker not in seen:
+            seen.add(marker)
+            result.append(clean)
+    return result
 
 
-def _session_payload(session, categories: set[str]) -> dict[str, object]:
-    applications = sorted({item.app for item in session.slices if item.app})
-    titles = sorted(
-        {
-            value
-            for item in session.slices
-            for value in (
-                item.title,
-                *(context.title for context in item.contexts),
-            )
-            if value
-        }
+def _episode_payload(
+    episode: ActivityEpisode, categories: set[str]
+) -> dict[str, object]:
+    anchors = _clean_items(
+        [
+            {"kind": item.kind, "value": minimize_cloud_text(item.value)}
+            for item in episode.anchors
+        ]
     )
-    contexts: list[dict[str, object]] = []
-    seen_contexts: set[tuple[tuple[str, object], ...]] = set()
-    for item in session.slices:
-        for context in item.contexts:
-            safe: dict[str, object] = {}
-            if context.project:
-                safe["editor_project"] = _basename(context.project)
-                categories.add("editor-project")
-            if context.file:
-                safe["file_name"] = _basename(context.file)
-                categories.add("file-name")
-            if context.url_path:
-                safe["repository_path"] = context.url_path
-                categories.add("repository-path")
-            elif context.url_host:
-                safe["domain"] = context.url_host
-                categories.add("browser-domain")
-            if context.language:
-                safe["language"] = context.language
-                categories.add("language")
-            if context.title:
-                safe["title"] = context.title
-            marker = tuple(sorted(safe.items()))
-            if safe and marker not in seen_contexts:
-                seen_contexts.add(marker)
-                contexts.append(safe)
-    if applications:
-        categories.add("application")
-    if titles:
-        categories.add("title")
-    return {
-        "id": session.session_id,
-        "start": session.start.isoformat(),
-        "end": session.end.isoformat(),
-        "active_seconds": session.active_seconds,
-        "focused_seconds": session.focused_seconds,
-        "label": session.label,
+    applications = _clean_items(
+        [
+            {"value": minimize_cloud_text(item.value), "count": item.count}
+            for item in episode.applications
+        ]
+    )
+    activity_labels = _clean_items(
+        [
+            {"value": minimize_cloud_title(None, item.value), "count": item.count}
+            for item in episode.activity_labels
+        ]
+    )
+    outcome_signals = _clean_items(
+        [
+            {"code": item.code, "label": minimize_cloud_text(item.label)}
+            for item in episode.outcome_signals
+        ]
+    )
+    for values, category in (
+        (anchors, "anchor"),
+        (applications, "application"),
+        (activity_labels, "activity-label"),
+        (outcome_signals, "outcome-signal"),
+    ):
+        if values:
+            categories.add(category)
+    payload: dict[str, object] = {
+        "id": episode.episode_id,
+        "start": episode.start.isoformat(),
+        "end": episode.end.isoformat(),
+        "active_seconds": episode.active_seconds,
+        "focused_seconds": episode.focused_seconds,
+        "label": minimize_cloud_text(episode.label),
+        "anchors": anchors,
         "applications": applications,
-        "titles": titles,
-        "contexts": contexts,
-        "outcome_signals": [
-            {
-                "code": signal.code,
-                "label": signal.label,
-            }
-            for signal in session.outcome_signals
-        ],
+        "activity_labels": activity_labels,
+        "transition_count": len(episode.session_ids),
+        "outcome_signals": outcome_signals,
     }
+    return {key: value for key, value in payload.items() if value is not None}
 
 
-def build_summary_request(bundle: SessionBundle) -> SummaryRequest:
+def _request_for_episodes(
+    bundle: EpisodeBundle, episodes: Sequence[ActivityEpisode]
+) -> SummaryRequest:
     categories: set[str] = set()
-    sessions = [
-        _session_payload(item, categories)
-        for item in sorted(bundle.sessions, key=lambda value: value.session_id)
-    ]
     payload: dict[str, object] = {
         "schema": REQUEST_SCHEMA,
         "prompt_schema": PROMPT_SCHEMA,
         "date": bundle.day.isoformat(),
         "timezone": bundle.timezone_name,
         "focused_seconds": bundle.focused_seconds,
-        "sessions": sessions,
+        "episodes": [_episode_payload(item, categories) for item in episodes],
     }
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-    if len(serialized) > MAX_REQUEST_CHARACTERS:
-        raise SummaryRequestTooLarge()
-    category_order = (
-        "application",
-        "browser-domain",
-        "editor-project",
-        "file-name",
-        "language",
-        "repository-path",
-        "title",
-    )
     return SummaryRequest(
         schema=REQUEST_SCHEMA,
+        pass_kind=SummaryPass.CHUNK,
         payload=payload,
         character_count=len(serialized),
-        session_count=len(sessions),
-        data_categories=tuple(item for item in category_order if item in categories),
+        episode_ids=tuple(item.episode_id for item in episodes),
+        data_categories=tuple(item for item in CATEGORY_ORDER if item in categories),
     )
+
+
+def _episodes(bundle: EpisodeBundle | SessionBundle) -> EpisodeBundle:
+    return bundle if isinstance(bundle, EpisodeBundle) else compact_sessions(bundle)
+
+
+def build_summary_plan(bundle: EpisodeBundle | SessionBundle) -> SummaryPlan:
+    resolved = _episodes(bundle)
+    request = _request_for_episodes(resolved, resolved.episodes)
+    if request.character_count > MAX_REQUEST_CHARACTERS:
+        raise SummaryRequestTooLarge()
+    return SummaryPlan(
+        requests=(request,),
+        episode_count=len(resolved.episodes),
+        input_character_count=request.character_count,
+        planned_request_count=1,
+        data_categories=request.data_categories,
+    )
+
+
+def build_summary_request(bundle: EpisodeBundle | SessionBundle) -> SummaryRequest:
+    """Compatibility wrapper for callers that expect one bounded request."""
+    return build_summary_plan(bundle).requests[0]
 
 
 def _bounded_text(value: object, field: str, limit: int = 500) -> str:
@@ -148,9 +164,7 @@ def _bounded_text(value: object, field: str, limit: int = 500) -> str:
     return sanitize_generated_text(value.strip())
 
 
-def _object(
-    value: object, field: str, required: set[str]
-) -> Mapping[str, object]:
+def _object(value: object, field: str, required: set[str]) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or set(value) != required:
         raise SummaryValidationError(f"invalid {field}")
     return value
@@ -172,7 +186,7 @@ def _evidence(value: object, allowed: set[str], field: str) -> tuple[str, ...]:
     return result
 
 
-def _session_ids(value: object, allowed: set[str], field: str) -> tuple[str, ...]:
+def _ids(value: object, allowed: set[str], field: str) -> tuple[str, ...]:
     values = _list(value, field, 100)
     result = tuple(_bounded_text(item, field, 50) for item in values)
     if not result or len(result) != len(set(result)) or not set(result) <= allowed:
@@ -181,30 +195,34 @@ def _session_ids(value: object, allowed: set[str], field: str) -> tuple[str, ...
 
 
 def validate_digest(
-    payload: Mapping[str, object], bundle: SessionBundle
+    payload: Mapping[str, object], allowed_episode_ids: set[str]
 ) -> WorkstreamDigest:
     root = _object(
         payload,
         "response",
-        {"schema", "workstreams", "unassigned_session_ids"},
+        {"schema", "workstreams", "unassigned_episode_ids"},
     )
     if root["schema"] != DIGEST_SCHEMA:
         raise SummaryValidationError("invalid schema")
-    allowed = {item.session_id for item in bundle.sessions}
-    workstream_values = _list(root["workstreams"], "workstreams", 30)
     workstreams: list[WorkstreamSummary] = []
     allocated: list[str] = []
-    for index, raw_workstream in enumerate(workstream_values):
+    for index, raw_workstream in enumerate(
+        _list(root["workstreams"], "workstreams", 30)
+    ):
         field = f"workstreams[{index}]"
         value = _object(
             raw_workstream,
             field,
-            {"label", "confidence", "session_ids", "topics", "outcomes"},
+            {"label", "confidence", "episode_ids", "topics", "outcomes"},
         )
-        session_ids = _session_ids(value["session_ids"], allowed, f"{field}.session_ids")
-        allocated.extend(session_ids)
+        episode_ids = _ids(
+            value["episode_ids"], allowed_episode_ids, f"{field}.episode_ids"
+        )
+        allocated.extend(episode_ids)
         try:
-            confidence = Confidence(_bounded_text(value["confidence"], f"{field}.confidence", 20))
+            confidence = Confidence(
+                _bounded_text(value["confidence"], f"{field}.confidence", 20)
+            )
         except ValueError:
             raise SummaryValidationError(f"invalid {field}.confidence") from None
         topics: list[TopicSummary] = []
@@ -217,7 +235,7 @@ def validate_digest(
                 TopicSummary(
                     _bounded_text(topic["text"], f"{topic_field}.text"),
                     _evidence(
-                        topic["evidence"], set(session_ids), f"{topic_field}.evidence"
+                        topic["evidence"], set(episode_ids), f"{topic_field}.evidence"
                     ),
                 )
             )
@@ -231,20 +249,21 @@ def validate_digest(
             )
             try:
                 strength = OutcomeStrength(
-                    _bounded_text(outcome["strength"], f"{outcome_field}.strength", 20)
+                    _bounded_text(
+                        outcome["strength"], f"{outcome_field}.strength", 20
+                    )
                 )
             except ValueError:
                 raise SummaryValidationError(
                     f"invalid {outcome_field}.strength"
                 ) from None
             evidence = _evidence(
-                outcome["evidence"], set(session_ids), f"{outcome_field}.evidence"
+                outcome["evidence"], set(episode_ids), f"{outcome_field}.evidence"
             )
-            text = _bounded_text(outcome["text"], f"{outcome_field}.text")
             if strength is not OutcomeStrength.NONE:
                 outcomes.append(
                     OutcomeSummary(
-                        text,
+                        _bounded_text(outcome["text"], f"{outcome_field}.text"),
                         strength,
                         evidence,
                     )
@@ -253,36 +272,42 @@ def validate_digest(
             WorkstreamSummary(
                 label=_bounded_text(value["label"], f"{field}.label", 120),
                 confidence=confidence,
-                session_ids=session_ids,
+                episode_ids=episode_ids,
                 topics=tuple(topics),
                 outcomes=tuple(outcomes),
             )
         )
-
-    unassigned_values = _list(
-        root["unassigned_session_ids"], "unassigned_session_ids", 100
-    )
     unassigned = tuple(
-        _bounded_text(item, "unassigned_session_ids", 50)
-        for item in unassigned_values
+        _bounded_text(item, "unassigned_episode_ids", 50)
+        for item in _list(
+            root["unassigned_episode_ids"], "unassigned_episode_ids", 100
+        )
     )
     allocation = allocated + list(unassigned)
-    if len(allocation) != len(set(allocation)) or set(allocation) != allowed:
-        raise SummaryValidationError("invalid session allocation")
+    if len(allocation) != len(set(allocation)) or set(allocation) != allowed_episode_ids:
+        raise SummaryValidationError("invalid episode allocation")
     return WorkstreamDigest(tuple(workstreams), unassigned)
 
 
 def summarize_bundle(
-    bundle: SessionBundle, provider: SummaryProvider
+    bundle: EpisodeBundle | SessionBundle,
+    provider: SummaryProvider,
+    plan: SummaryPlan | None = None,
 ) -> tuple[WorkstreamDigest, SummaryProvenance]:
-    request = build_summary_request(bundle)
-    response = provider.summarize(request)
-    digest = validate_digest(response.payload, bundle)
+    resolved_bundle = _episodes(bundle)
+    resolved_plan = plan or build_summary_plan(resolved_bundle)
+    if len(resolved_plan.requests) != 1:
+        raise SummaryRequestTooLarge()
+    response = provider.summarize(resolved_plan.requests[0])
+    digest = validate_digest(
+        response.payload, set(resolved_plan.requests[0].episode_ids)
+    )
     provenance = SummaryProvenance(
         provider=response.provider,
         model=response.model,
         prompt_schema=PROMPT_SCHEMA,
         input_tokens=response.input_tokens,
         output_tokens=response.output_tokens,
+        request_count=1,
     )
     return digest, provenance

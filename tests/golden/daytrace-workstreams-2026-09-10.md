@@ -10,8 +10,8 @@ Inferred workstream · High confidence · 10m
 
 ### Apparent achievements
 
-- Created the named repository (`session-001`)
-- Likely: Configured the health dashboard (`session-001`)
+- Created the named repository (`episode-001`)
+- Likely: Configured the health dashboard (`episode-001`)
 
 ### Work and topics
 

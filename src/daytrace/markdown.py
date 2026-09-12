@@ -289,7 +289,7 @@ def render_episode_markdown(
 
 
 def _digest_header(
-    bundle: SessionBundle, provenance: SummaryProvenance
+    bundle: EpisodeBundle, provenance: SummaryProvenance
 ) -> list[str]:
     focused = (
         format_duration(bundle.focused_seconds)
@@ -323,18 +323,18 @@ def _workstream_heading(
 
 
 def render_digest_markdown(
-    bundle: SessionBundle,
+    bundle: EpisodeBundle,
     digest: WorkstreamDigest,
     provenance: SummaryProvenance,
     *,
     details: bool = False,
 ) -> str:
-    session_by_id = {item.session_id: item for item in bundle.sessions}
+    episode_by_id = {item.episode_id: item for item in bundle.episodes}
     zone = ZoneInfo(bundle.timezone_name)
     lines = _digest_header(bundle, provenance)
     for workstream in digest.workstreams:
-        sessions = tuple(session_by_id[item] for item in workstream.session_ids)
-        seconds = sum(item.active_seconds for item in sessions)
+        episodes = tuple(episode_by_id[item] for item in workstream.episode_ids)
+        seconds = sum(item.active_seconds for item in episodes)
         lines.extend(_workstream_heading(workstream, seconds))
         lines.extend(["", "### Apparent achievements", ""])
         visible_outcomes = [
@@ -359,24 +359,29 @@ def render_digest_markdown(
             lines.append(f"- {_escape(topic.text)}{suffix}")
 
         lines.extend(["", "### Activity", ""])
-        for session in sorted(sessions, key=lambda value: (value.start, value.session_id)):
+        for episode in sorted(
+            episodes, key=lambda value: (value.start, value.episode_id)
+        ):
             lines.append(
-                f"- {_session_times(session, zone)} — {_code(session.label)} "
-                f"({format_duration(session.active_seconds)})"
+                f"- {_episode_times(episode, zone)} — {_code(episode.label)} "
+                f"({format_duration(episode.active_seconds)})"
             )
             if details:
-                _append_session_details(lines, session, zone)
+                lines.append(f"  - Episode ID: {_code(episode.episode_id)}")
+                lines.append(
+                    f"  - Activity transitions: {len(episode.session_ids)}"
+                )
 
     lines.extend(["", "## Unassigned activity", ""])
-    if not digest.unassigned_session_ids:
+    if not digest.unassigned_episode_ids:
         lines.append("None.")
     else:
-        for session_id in digest.unassigned_session_ids:
-            session = session_by_id[session_id]
+        for episode_id in digest.unassigned_episode_ids:
+            episode = episode_by_id[episode_id]
             lines.append(
-                f"- {_session_times(session, zone)} — {_code(session.label)} "
-                f"({format_duration(session.active_seconds)})"
+                f"- {_episode_times(episode, zone)} — {_code(episode.label)} "
+                f"({format_duration(episode.active_seconds)})"
             )
             if details:
-                _append_session_details(lines, session, zone)
+                lines.append(f"  - Episode ID: {_code(episode.episode_id)}")
     return "\n".join(lines) + "\n"

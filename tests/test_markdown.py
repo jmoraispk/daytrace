@@ -75,10 +75,10 @@ def test_render_episode_markdown_matches_golden(make_episode_bundle) -> None:
 
 
 def test_render_workstream_digest_matches_golden(
-    make_bundle, make_digest, make_provenance
+    make_episode_bundle, make_digest, make_provenance
 ) -> None:
     rendered = render_digest_markdown(
-        make_bundle(), make_digest(), make_provenance()
+        make_episode_bundle(), make_digest(), make_provenance()
     )
     expected = Path("tests/golden/daytrace-workstreams-2026-09-10.md").read_text(
         encoding="utf-8"

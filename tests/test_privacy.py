@@ -4,8 +4,8 @@ import json
 import pytest
 
 from daytrace.activitywatch import collect_day
-from daytrace.json_output import render_digest_json, render_session_json
-from daytrace.markdown import render_digest_markdown, render_session_markdown
+from daytrace.json_output import render_digest_json, render_episode_json
+from daytrace.markdown import render_digest_markdown, render_episode_markdown
 from daytrace.models import ProviderResponse, RawBucket, RawEvent, ServerInfo
 from daytrace.summarize import build_summary_request, summarize_bundle
 
@@ -61,12 +61,12 @@ class RecordingProvider:
 
     def summarize(self, request):
         self.requests.append(request)
-        session_ids = [item["id"] for item in request.payload["sessions"]]
+        episode_ids = [item["id"] for item in request.payload["episodes"]]
         return ProviderResponse(
             payload={
-                "schema": "daytrace.workstream-digest.v1",
+                "schema": "daytrace.workstream-digest.v2",
                 "workstreams": [],
-                "unassigned_session_ids": session_ids,
+                "unassigned_episode_ids": episode_ids,
             },
             provider="privacy-test",
             model="fixed",
@@ -94,10 +94,10 @@ def test_sensitive_trace_shapes_never_reach_bundle_provider_or_outputs(
     outputs = (
         repr(bundle),
         json.dumps(request.payload),
-        render_session_markdown(bundle),
-        render_session_markdown(bundle, details=True),
-        render_session_markdown(bundle, raw=True),
-        render_session_json(bundle, details=True),
+        render_episode_markdown(bundle),
+        render_episode_markdown(bundle, details=True),
+        render_episode_markdown(bundle, raw=True),
+        render_episode_json(bundle, details=True),
         render_digest_markdown(bundle, digest, provenance),
         render_digest_json(bundle, digest, provenance, details=True),
         json.dumps(recording_provider.requests[0].payload),

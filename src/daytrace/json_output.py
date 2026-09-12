@@ -150,22 +150,22 @@ def render_episode_json(
 
 
 def render_digest_json(
-    bundle: SessionBundle,
+    bundle: EpisodeBundle,
     digest: WorkstreamDigest,
     provenance: SummaryProvenance,
     *,
     details: bool = False,
 ) -> str:
-    session_by_id = {item.session_id: item for item in bundle.sessions}
+    episode_by_id = {item.episode_id: item for item in bundle.episodes}
     workstreams = []
     for item in digest.workstreams:
-        sessions = tuple(session_by_id[value] for value in item.session_ids)
+        episodes = tuple(episode_by_id[value] for value in item.episode_ids)
         workstreams.append(
             {
                 "label": item.label,
                 "confidence": item.confidence.value,
-                "active_seconds": sum(value.active_seconds for value in sessions),
-                "session_ids": list(item.session_ids),
+                "active_seconds": sum(value.active_seconds for value in episodes),
+                "episode_ids": list(item.episode_ids),
                 "topics": [
                     {"text": topic.text, "evidence": list(topic.evidence)}
                     for topic in item.topics
@@ -179,12 +179,12 @@ def render_digest_json(
                     for outcome in item.outcomes
                 ],
                 "activity": [
-                    _session_dict(value, details=details) for value in sessions
+                    _episode_dict(value, details=details) for value in episodes
                 ],
             }
         )
     payload = {
-        "schema": "daytrace.workstream-report.v1",
+        "schema": "daytrace.workstream-report.v2",
         "date": bundle.day.isoformat(),
         "timezone": bundle.timezone_name,
         "timezone_status": "inferred_at_query",
@@ -195,11 +195,12 @@ def render_digest_json(
             "prompt_schema": provenance.prompt_schema,
             "input_tokens": provenance.input_tokens,
             "output_tokens": provenance.output_tokens,
+            "request_count": provenance.request_count,
         },
         "workstreams": workstreams,
         "unassigned_activity": [
-            _session_dict(session_by_id[value], details=details)
-            for value in digest.unassigned_session_ids
+            _episode_dict(episode_by_id[value], details=details)
+            for value in digest.unassigned_episode_ids
         ],
         "diagnostics": [
             {"code": item.code.value, "count": item.count}

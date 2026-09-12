@@ -166,7 +166,7 @@ def test_cloud_disclosure_precedes_hidden_key_and_provider_call(
     assert status == 0
     assert [item[0] for item in calls] == ["confirm", "key", "provider"]
     assert "openai" in captured.err
-    assert "1 sanitized session" in captured.err
+    assert "1 compact episode" in captured.err
     assert "secret" not in captured.out + captured.err
 
 

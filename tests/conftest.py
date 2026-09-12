@@ -116,27 +116,27 @@ def make_digest():
                 WorkstreamSummary(
                     label="PerfLife",
                     confidence=Confidence.HIGH,
-                    session_ids=("session-001",),
+                    episode_ids=("episode-001",),
                     topics=(
                         TopicSummary(
-                            "Defined a health dashboard", ("session-001",)
+                            "Defined a health dashboard", ("episode-001",)
                         ),
                     ),
                     outcomes=(
                         OutcomeSummary(
                             "Created the named repository",
                             OutcomeStrength.OBSERVED,
-                            ("session-001",),
+                            ("episode-001",),
                         ),
                         OutcomeSummary(
                             "Configured the health dashboard",
                             OutcomeStrength.LIKELY,
-                            ("session-001",),
+                            ("episode-001",),
                         ),
                     ),
                 ),
             ),
-            unassigned_session_ids=(),
+            unassigned_episode_ids=(),
         )
 
     return factory
@@ -144,13 +144,14 @@ def make_digest():
 
 @pytest.fixture
 def make_provenance():
-    def factory() -> SummaryProvenance:
+    def factory(request_count: int = 1) -> SummaryProvenance:
         return SummaryProvenance(
             provider="openai",
             model="gpt-test",
             prompt_schema="daytrace.workstream-prompt.v1",
             input_tokens=120,
             output_tokens=30,
+            request_count=request_count,
         )
 
     return factory

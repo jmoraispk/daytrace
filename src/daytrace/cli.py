@@ -165,9 +165,10 @@ def _openai_summary(bundle, api_key: str, model: str):
 
 
 def _confirm_cloud_send(request, provider: str, model: str, assume_yes: bool) -> bool:
-    noun = "session" if request.session_count == 1 else "sessions"
+    count = len(request.episode_ids)
+    noun = "episode" if count == 1 else "episodes"
     print(
-        f"About to send {request.session_count} sanitized {noun} "
+        f"About to send {count} compact {noun} "
         f"({request.character_count} characters) to {provider}/{model}.",
         file=sys.stderr,
     )
@@ -210,6 +211,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+
+    if not hasattr(bundle, "episodes"):
+        bundle = compact_sessions(bundle)
 
     if args.diagnostics:
         return 0 if _emit(_render_diagnostics(bundle, args.format), args.output) else 1

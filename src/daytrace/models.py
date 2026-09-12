@@ -34,6 +34,11 @@ class OutcomeStrength(StrEnum):
     NONE = "none"
 
 
+class SummaryPass(StrEnum):
+    CHUNK = "chunk"
+    MERGE = "merge"
+
+
 @dataclass(frozen=True, slots=True)
 class ServerEndpoint:
     protocol: str
@@ -244,7 +249,7 @@ class OutcomeSummary:
 class WorkstreamSummary:
     label: str
     confidence: Confidence
-    session_ids: tuple[str, ...]
+    episode_ids: tuple[str, ...]
     topics: tuple[TopicSummary, ...]
     outcomes: tuple[OutcomeSummary, ...]
 
@@ -252,15 +257,25 @@ class WorkstreamSummary:
 @dataclass(frozen=True, slots=True)
 class WorkstreamDigest:
     workstreams: tuple[WorkstreamSummary, ...]
-    unassigned_session_ids: tuple[str, ...]
+    unassigned_episode_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class SummaryRequest:
     schema: str
+    pass_kind: SummaryPass
     payload: Mapping[str, object]
     character_count: int
-    session_count: int
+    episode_ids: tuple[str, ...]
+    data_categories: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SummaryPlan:
+    requests: tuple[SummaryRequest, ...]
+    episode_count: int
+    input_character_count: int
+    planned_request_count: int
     data_categories: tuple[str, ...]
 
 
@@ -280,6 +295,7 @@ class SummaryProvenance:
     prompt_schema: str
     input_tokens: int | None
     output_tokens: int | None
+    request_count: int = 1
 
 
 @dataclass(frozen=True, slots=True)
