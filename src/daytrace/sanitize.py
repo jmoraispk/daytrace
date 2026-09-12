@@ -32,6 +32,10 @@ AUTH_PATH_PARTS = (
     "recover",
     "reset",
 )
+WHOLE_URL = re.compile(
+    r"(?i)^(?:https?://)?(?:[a-z0-9-]+\.)+[a-z]{2,}"
+    r"(?:/[^\s?#]*)?(?:\?[^\s#]*)?(?:#[^\s]*)?$"
+)
 
 
 def _safe_path(host: str | None, path: str | None) -> str | None:
@@ -66,9 +70,13 @@ def _safe_text(
     compact = " ".join(normalized.replace("\r", " ").replace("\n", " ").split())[
         :500
     ]
-    if compact.startswith(("http://", "https://")):
+    if WHOLE_URL.fullmatch(compact) and (
+        compact.startswith(("http://", "https://"))
+        or any(marker in compact for marker in ("/", "?", "#"))
+    ):
         try:
-            host = urlsplit(compact).hostname
+            parsed = urlsplit(compact if "://" in compact else f"https://{compact}")
+            host = parsed.hostname
         except ValueError:
             host = None
         diagnose(DiagnosticCode.SANITIZED_FIELD)

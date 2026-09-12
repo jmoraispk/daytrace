@@ -86,3 +86,15 @@ def test_editor_paths_are_minimized_before_leaving_sanitizer(make_record) -> Non
     assert sanitized[0].project == "daytrace"
     assert sanitized[0].file == "main.py"
     assert "Users" not in repr(sanitized)
+
+
+def test_local_sanitizer_removes_query_from_scheme_less_url_title(make_record) -> None:
+    record = make_record(
+        0,
+        1,
+        title="git.example/oauth/authorize?client_id=public&state=private",
+    )
+
+    sanitized = sanitize_records((record,), lambda code: None)
+
+    assert sanitized[0].title == "git.example"
