@@ -204,7 +204,7 @@ def _summary_failure_message(exc: Exception) -> str:
             ProviderFailureKind.AUTHENTICATION: "authentication, access, or billing failed",
             ProviderFailureKind.RATE_LIMIT: "the provider rate limit or quota was reached",
             ProviderFailureKind.NETWORK: "a network failure occurred",
-            ProviderFailureKind.SERVICE: "the provider service unavailable",
+            ProviderFailureKind.SERVICE: "the provider reported service unavailable",
             ProviderFailureKind.REQUEST: "the provider rejected the request",
         }.get(exc.kind, "the provider request failed")
     elif isinstance(exc, SummaryValidationError):

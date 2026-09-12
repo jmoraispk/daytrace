@@ -18,5 +18,12 @@ def test_cloud_title_drops_unstructured_meeting_topic() -> None:
     assert minimize_cloud_title("Teams", title) == "Meeting - Microsoft Teams"
 
 
+def test_cloud_title_drops_mail_participant_without_application_hint() -> None:
+    assert (
+        minimize_cloud_title(None, "Inbox - Example Person - Outlook")
+        == "Inbox - Outlook"
+    )
+
+
 def test_cloud_path_keeps_only_basename() -> None:
     assert minimize_cloud_path(r"C:\Users\person\private\report.pdf") == "report.pdf"

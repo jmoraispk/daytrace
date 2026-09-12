@@ -43,12 +43,15 @@ def minimize_cloud_title(app: str | None, title: str | None) -> str | None:
     folded_title = title.casefold()
     if "teams" in folded_app or "microsoft teams" in folded_title:
         return "Meeting - Microsoft Teams"
-    if any(item in folded_app for item in ("outlook", "gmail", "mail")):
+    communication_text = f"{folded_app} {folded_title}"
+    if any(item in communication_text for item in ("outlook", "gmail")) or any(
+        item in folded_app for item in ("mail", "thunderbird")
+    ):
         category = "Inbox" if "inbox" in folded_title else (
             "Calendar" if "calendar" in folded_title else "Email"
         )
-        display = "Outlook" if "outlook" in folded_app else (
-            "Gmail" if "gmail" in folded_app else "Mail"
+        display = "Outlook" if "outlook" in communication_text else (
+            "Gmail" if "gmail" in communication_text else "Mail"
         )
         return f"{category} - {display}"
     return minimize_cloud_text(title)
