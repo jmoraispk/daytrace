@@ -103,6 +103,25 @@ class ActivityRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class SanitizedObservation:
+    evidence_id: str
+    kind: SourceKind
+    start: datetime
+    end: datetime
+    app: str | None = None
+    title: str | None = None
+    project: str | None = None
+    file: str | None = None
+    url_host: str | None = None
+    url_path: str | None = None
+    language: str | None = None
+
+    @property
+    def duration_seconds(self) -> float:
+        return (self.end - self.start).total_seconds()
+
+
+@dataclass(frozen=True, slots=True)
 class ApplicationTotal:
     app: str
     seconds: float
