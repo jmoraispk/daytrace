@@ -1,10 +1,19 @@
 import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from openai import (
+    APIConnectionError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    RateLimitError,
+)
 
+from daytrace.models import ProviderFailureKind
 from daytrace.providers import OpenAIProvider, SummaryProviderError
-from daytrace.summarize import build_summary_plan
+from daytrace.summarize import build_merge_request, build_summary_plan
 
 
 def test_openai_provider_requests_strict_json_and_converts_usage(
@@ -52,3 +61,80 @@ def test_provider_wraps_sdk_errors_without_private_content(make_episode_bundle) 
     ) as exc:
         provider.summarize(build_summary_plan(make_episode_bundle()).requests[0])
     assert "private captured title" not in str(exc.value)
+
+
+def test_openai_provider_uses_constrained_merge_schema(
+    make_digest,
+) -> None:
+    calls = []
+    response = SimpleNamespace(
+        output_text=json.dumps(
+            {
+                "schema": "daytrace.workstream-merge.v1",
+                "groups": [
+                    {
+                        "label": "PerfLife",
+                        "confidence": "high",
+                        "provisional_ids": ["provisional-001-001"],
+                    }
+                ],
+            }
+        ),
+        usage=None,
+    )
+    client = SimpleNamespace(
+        responses=SimpleNamespace(
+            create=lambda **kwargs: calls.append(kwargs) or response
+        )
+    )
+    request, _ = build_merge_request((make_digest(),))
+
+    OpenAIProvider("secret", "model", client=client).merge(request)
+
+    assert calls[0]["text"]["format"]["name"] == "daytrace_workstream_merge_v1"
+
+
+@pytest.mark.parametrize(
+    ("status_code", "error_type", "kind"),
+    [
+        (401, AuthenticationError, ProviderFailureKind.AUTHENTICATION),
+        (429, RateLimitError, ProviderFailureKind.RATE_LIMIT),
+        (500, InternalServerError, ProviderFailureKind.SERVICE),
+        (400, BadRequestError, ProviderFailureKind.REQUEST),
+    ],
+)
+def test_provider_classifies_status_failure_without_sdk_message(
+    status_code, error_type, kind, make_episode_bundle
+) -> None:
+    request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+    response = httpx.Response(status_code, request=request)
+    sdk_error = error_type("private provider detail", response=response, body=None)
+    client = SimpleNamespace(
+        responses=SimpleNamespace(
+            create=lambda **kwargs: (_ for _ in ()).throw(sdk_error)
+        )
+    )
+    provider = OpenAIProvider("runtime-secret", "model", client=client)
+
+    with pytest.raises(SummaryProviderError) as caught:
+        provider.summarize(build_summary_plan(make_episode_bundle()).requests[0])
+
+    assert caught.value.kind is kind
+    assert "private provider detail" not in str(caught.value)
+    assert "runtime-secret" not in repr(caught.value)
+
+
+def test_provider_classifies_connection_failure(make_episode_bundle) -> None:
+    request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+    sdk_error = APIConnectionError(request=request)
+    client = SimpleNamespace(
+        responses=SimpleNamespace(
+            create=lambda **kwargs: (_ for _ in ()).throw(sdk_error)
+        )
+    )
+    provider = OpenAIProvider("runtime-secret", "model", client=client)
+
+    with pytest.raises(SummaryProviderError) as caught:
+        provider.summarize(build_summary_plan(make_episode_bundle()).requests[0])
+
+    assert caught.value.kind is ProviderFailureKind.NETWORK

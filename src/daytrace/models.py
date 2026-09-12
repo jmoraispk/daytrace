@@ -39,6 +39,14 @@ class SummaryPass(StrEnum):
     MERGE = "merge"
 
 
+class ProviderFailureKind(StrEnum):
+    AUTHENTICATION = "authentication"
+    RATE_LIMIT = "rate-limit"
+    NETWORK = "network"
+    SERVICE = "service"
+    REQUEST = "request"
+
+
 @dataclass(frozen=True, slots=True)
 class ServerEndpoint:
     protocol: str
