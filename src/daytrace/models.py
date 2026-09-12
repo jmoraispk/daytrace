@@ -149,6 +149,35 @@ class ActivitySlice:
 
 
 @dataclass(frozen=True, slots=True)
+class OutcomeSignal:
+    code: str
+    label: str
+    evidence_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ActivitySession:
+    session_id: str
+    start: datetime
+    end: datetime
+    active_seconds: float
+    focused_seconds: float | None
+    label: str
+    slices: tuple[ActivitySlice, ...]
+    evidence_ids: tuple[str, ...]
+    outcome_signals: tuple[OutcomeSignal, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SessionBundle:
+    day: date
+    timezone_name: str
+    focused_seconds: float | None
+    sessions: tuple[ActivitySession, ...]
+    diagnostics: tuple[DiagnosticCount, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ApplicationTotal:
     app: str
     seconds: float
