@@ -2,7 +2,7 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
-from daytrace.markdown import format_duration, render_markdown
+from daytrace.markdown import format_duration, render_markdown, render_session_markdown
 from daytrace.models import SourceKind
 from daytrace.report import build_report
 from daytrace.time import resolve_day
@@ -36,11 +36,23 @@ def test_render_markdown_matches_golden_file(make_record) -> None:
     assert "http" not in markdown
 
 
-def test_duration_rounding_is_fixed() -> None:
-    assert format_duration(1) == "1m"
+def test_duration_does_not_inflate_short_activity() -> None:
+    assert format_duration(1) == "<1m"
+    assert format_duration(59.9) == "<1m"
+    assert format_duration(60) == "1m"
     assert format_duration(89) == "1m"
     assert format_duration(90) == "2m"
     assert format_duration(3600) == "1h"
+
+
+def test_render_session_markdown_matches_golden(make_bundle) -> None:
+    rendered = render_session_markdown(make_bundle())
+    expected = Path("tests/golden/daytrace-sessions-2026-09-10.md").read_text(
+        encoding="utf-8"
+    )
+    assert rendered == expected
+    assert "Project filter" not in rendered
+    assert "?" not in rendered
 
 
 def test_empty_report_is_valid_markdown() -> None:

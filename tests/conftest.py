@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -7,7 +7,10 @@ from daytrace.models import (
     ActivitySession,
     ActivitySlice,
     ContextSignal,
+    DiagnosticCode,
+    DiagnosticCount,
     SanitizedObservation,
+    SessionBundle,
     SourceKind,
 )
 
@@ -47,6 +50,42 @@ def make_record():
             url_path=url_path,
             language=language,
             status=status,
+        )
+
+    return factory
+
+
+@pytest.fixture
+def make_bundle(make_session, make_slice):
+    def factory() -> SessionBundle:
+        context = ContextSignal(
+            kind=SourceKind.BROWSER,
+            evidence_id="evidence-0001",
+            title="PerfLife",
+            url_host="github.com",
+            url_path="/jmoraispk/perflife",
+        )
+        activity_slice = make_slice(
+            0,
+            10,
+            app="msedge.exe",
+            title="PerfLife",
+            contexts=(context,),
+            evidence_ids=("evidence-0001",),
+        )
+        session = make_session(
+            session_id="session-001",
+            label="jmoraispk/perflife",
+            slices=(activity_slice,),
+        )
+        return SessionBundle(
+            day=date(2026, 9, 10),
+            timezone_name="UTC",
+            focused_seconds=600,
+            sessions=(session,),
+            diagnostics=(
+                DiagnosticCount(DiagnosticCode.NON_POSITIVE_EVENT, 2),
+            ),
         )
 
     return factory
