@@ -4,7 +4,9 @@ import logging
 from collections.abc import Callable
 from datetime import date, timezone
 
+from daytrace.diagnostics import DiagnosticCollector, diagnostic_messages
 from daytrace.markdown import render_markdown
+from daytrace.models import DiagnosticCode
 from daytrace.normalize import SUPPORTED_BUCKET_TYPES, normalize_events
 from daytrace.report import build_report
 from daytrace.source import ActivitySource, AwClientSource
@@ -25,6 +27,7 @@ def summarize_day(
     warn: Callable[[str], None] | None = None,
 ) -> str:
     warning = warn or logging.getLogger("daytrace").warning
+    diagnostics = DiagnosticCollector()
     window = resolve_day(day, timezone_name)
     activity_source = source or AwClientSource.from_url(server)
     activity_source.get_info()
@@ -34,8 +37,7 @@ def summarize_day(
     )
     unknown_count = len(buckets) - len(supported)
     if unknown_count:
-        noun = "bucket" if unknown_count == 1 else "buckets"
-        warning(f"ignored {unknown_count} unsupported ActivityWatch {noun}")
+        diagnostics.add(DiagnosticCode.UNSUPPORTED_BUCKET, unknown_count)
 
     records = tuple(
         record
@@ -48,8 +50,10 @@ def summarize_day(
                 window.end.astimezone(timezone.utc),
             ),
             window,
-            warning,
+            diagnostics.add,
         )
     )
     transformed = merge_adjacent(filter_project(remove_afk(records), project))
+    for message in diagnostic_messages(diagnostics.snapshot()):
+        warning(message)
     return render_markdown(build_report(day, window, transformed, project))

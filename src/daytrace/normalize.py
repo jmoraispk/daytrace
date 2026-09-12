@@ -4,7 +4,14 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import timedelta, timezone
 from urllib.parse import urlsplit
 
-from daytrace.models import ActivityRecord, DayWindow, RawBucket, RawEvent, SourceKind
+from daytrace.models import (
+    ActivityRecord,
+    DayWindow,
+    DiagnosticCode,
+    RawBucket,
+    RawEvent,
+    SourceKind,
+)
 
 
 ONE_SECOND = timedelta(seconds=1)
@@ -21,21 +28,22 @@ def _text(data: Mapping[str, object], key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _url_host(data: Mapping[str, object]) -> str | None:
+def _url_parts(data: Mapping[str, object]) -> tuple[str | None, str | None]:
     value = _text(data, "url")
     if not value:
-        return None
+        return None, None
     try:
-        return urlsplit(value).hostname
+        parsed = urlsplit(value)
+        return parsed.hostname.lower() if parsed.hostname else None, parsed.path or None
     except ValueError:
-        return None
+        return None, None
 
 
 def normalize_events(
     bucket: RawBucket,
     events: Iterable[RawEvent],
     window: DayWindow,
-    warn: Callable[[str], None],
+    warn: Callable[[DiagnosticCode], None],
 ) -> tuple[ActivityRecord, ...]:
     kind = SUPPORTED_BUCKET_TYPES[bucket.type]
     normalized: list[ActivityRecord] = []
@@ -44,16 +52,15 @@ def normalize_events(
 
     for event in events:
         if event.timestamp.tzinfo is None:
-            warn(
-                f"skipped naive timestamp for event {event.id!r} in bucket {bucket.id!r}"
-            )
+            warn(DiagnosticCode.NAIVE_TIMESTAMP)
             continue
         raw_start = event.timestamp.astimezone(timezone.utc)
         start = max(raw_start, window_start)
         end = min(raw_start + event.duration_seconds * ONE_SECOND, window_end)
         if end <= start:
-            warn(f"skipped non-positive event {event.id!r} in bucket {bucket.id!r}")
+            warn(DiagnosticCode.NON_POSITIVE_EVENT)
             continue
+        url_host, url_path = _url_parts(event.data)
         normalized.append(
             ActivityRecord(
                 event_id=event.id,
@@ -65,7 +72,8 @@ def normalize_events(
                 title=_text(event.data, "title"),
                 project=_text(event.data, "project"),
                 file=_text(event.data, "file"),
-                url_host=_url_host(event.data),
+                url_host=url_host,
+                url_path=url_path,
                 language=_text(event.data, "language"),
                 status=_text(event.data, "status"),
             )

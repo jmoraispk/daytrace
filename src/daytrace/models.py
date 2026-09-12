@@ -14,6 +14,14 @@ class SourceKind(StrEnum):
     BROWSER = "browser"
 
 
+class DiagnosticCode(StrEnum):
+    NON_POSITIVE_EVENT = "non-positive-event"
+    NAIVE_TIMESTAMP = "naive-timestamp"
+    UNSUPPORTED_BUCKET = "unsupported-bucket"
+    WINDOW_CONFLICT = "window-conflict"
+    SANITIZED_FIELD = "sanitized-field"
+
+
 @dataclass(frozen=True, slots=True)
 class ServerEndpoint:
     protocol: str
@@ -54,6 +62,12 @@ class RawEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class DiagnosticCount:
+    code: DiagnosticCode
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityRecord:
     event_id: str
     bucket_id: str
@@ -65,6 +79,7 @@ class ActivityRecord:
     project: str | None = None
     file: str | None = None
     url_host: str | None = None
+    url_path: str | None = None
     language: str | None = None
     status: str | None = None
 
@@ -81,6 +96,7 @@ class ActivityRecord:
             self.project,
             self.file,
             self.url_host,
+            self.url_path,
             self.language,
             self.status,
         )

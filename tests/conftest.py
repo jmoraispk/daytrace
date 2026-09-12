@@ -19,6 +19,7 @@ def make_record():
         project: str | None = None,
         file: str | None = None,
         url_host: str | None = None,
+        url_path: str | None = None,
         language: str | None = None,
         status: str | None = None,
     ) -> ActivityRecord:
@@ -36,6 +37,7 @@ def make_record():
             project=project,
             file=file,
             url_host=url_host,
+            url_path=url_path,
             language=language,
             status=status,
         )
