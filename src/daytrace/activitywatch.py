@@ -6,9 +6,10 @@ from collections.abc import Callable
 from datetime import date, timezone
 
 from daytrace.diagnostics import DiagnosticCollector, diagnostic_messages
+from daytrace.episode import compact_sessions
 from daytrace.fusion import fuse_observations
-from daytrace.markdown import render_session_markdown
-from daytrace.models import DiagnosticCode, SessionBundle
+from daytrace.markdown import render_episode_markdown
+from daytrace.models import DiagnosticCode, EpisodeBundle
 from daytrace.normalize import SUPPORTED_BUCKET_TYPES, normalize_events
 from daytrace.sanitize import sanitize_records
 from daytrace.sessionize import sessionize
@@ -26,7 +27,7 @@ def collect_day(
     server: str = DEFAULT_SERVER,
     timezone_name: str | None = None,
     source: ActivitySource | None = None,
-) -> SessionBundle:
+) -> EpisodeBundle:
     diagnostics = DiagnosticCollector()
     window = resolve_day(day, timezone_name)
     activity_source = source or AwClientSource.from_url(server)
@@ -56,7 +57,8 @@ def collect_day(
     active = remove_afk(records)
     sanitized = sanitize_records(active, diagnostics.add)
     slices = fuse_observations(sanitized, diagnostics.add)
-    return sessionize(day, window, slices, diagnostics.snapshot())
+    sessions = sessionize(day, window, slices, diagnostics.snapshot())
+    return compact_sessions(sessions)
 
 
 def summarize_day(
@@ -83,4 +85,4 @@ def summarize_day(
     warning = warn or logging.getLogger("daytrace").warning
     for message in diagnostic_messages(bundle.diagnostics):
         warning(message)
-    return render_session_markdown(bundle)
+    return render_episode_markdown(bundle)

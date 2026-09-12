@@ -7,11 +7,13 @@ from zoneinfo import ZoneInfo
 from daytrace.diagnostics import diagnostic_messages
 from daytrace.models import (
     ActivityRecord,
+    ActivityEpisode,
     ActivityReport,
     ActivitySession,
     ActivitySlice,
     Confidence,
     ContextSignal,
+    EpisodeBundle,
     OutcomeStrength,
     SessionBundle,
     SourceKind,
@@ -196,6 +198,93 @@ def render_session_markdown(
         lines.extend(["", "## Diagnostics", ""])
         for message in diagnostic_messages(bundle.diagnostics):
             lines.append(f"- {message[0].upper() + message[1:]}.")
+    return "\n".join(lines) + "\n"
+
+
+def _episode_times(item: ActivityEpisode, zone: ZoneInfo) -> str:
+    start = item.start.astimezone(zone).strftime("%H:%M")
+    end = item.end.astimezone(zone).strftime("%H:%M")
+    return f"{start}–{end}"
+
+
+def render_episode_markdown(
+    bundle: EpisodeBundle, *, details: bool = False, raw: bool = False
+) -> str:
+    zone = ZoneInfo(bundle.timezone_name)
+    focused = (
+        format_duration(bundle.focused_seconds)
+        if bundle.focused_seconds is not None
+        else "Unavailable"
+    )
+    lines = [
+        f"# DayTrace — {bundle.day.isoformat()}",
+        "",
+        f"Timezone: {_code(bundle.timezone_name)} (inferred at query time)",
+        f"Focused activity: {focused}",
+        "Summary: Deterministic activity episodes",
+        "",
+        "## Activity episodes",
+        "",
+    ]
+    if not bundle.episodes:
+        lines.append("No activity episodes.")
+    for item in sorted(bundle.episodes, key=lambda value: (value.start, value.episode_id)):
+        lines.append(
+            f"- {_episode_times(item, zone)} — {_code(item.label)} "
+            f"({format_duration(item.active_seconds)})"
+        )
+        if item.anchors:
+            anchors = "; ".join(
+                f"{anchor.kind}: {_escape(anchor.value)}" for anchor in item.anchors
+            )
+            lines.append(f"  - Anchors: {anchors}")
+        if item.applications:
+            tools = ", ".join(
+                f"{_escape(value.value)} ×{value.count}" for value in item.applications
+            )
+            lines.append(f"  - Tools: {tools}")
+        lines.append(f"  - Activity transitions: {len(item.session_ids)}")
+        for signal in item.outcome_signals:
+            lines.append(f"  - Observed signal: {_escape(signal.label)}")
+        if details:
+            lines.append(f"  - Episode ID: {_code(item.episode_id)}")
+            lines.append(
+                "  - Source sessions: "
+                + ", ".join(_code(value) for value in item.session_ids)
+            )
+            labels = ", ".join(
+                f"{_escape(value.value)} ×{value.count}" for value in item.activity_labels
+            )
+            if labels:
+                lines.append(f"  - Activity labels: {labels}")
+            if item.evidence_ids:
+                lines.append(
+                    "  - Evidence: "
+                    + ", ".join(_code(value) for value in item.evidence_ids)
+                )
+            focused_value = (
+                format_duration(item.focused_seconds)
+                if item.focused_seconds is not None
+                else "unavailable"
+            )
+            lines.append(f"  - Foreground duration: {focused_value}")
+
+    if raw:
+        lines.extend(["", "## Fine-grained activity", ""])
+        for session in sorted(
+            bundle.sessions, key=lambda value: (value.start, value.session_id)
+        ):
+            lines.append(
+                f"- {_session_times(session, zone)} — {_code(session.label)} "
+                f"({format_duration(session.active_seconds)}) — {_code(session.session_id)}"
+            )
+            _append_session_details(lines, session, zone)
+            _append_raw_slices(lines, session, zone)
+
+    if bundle.diagnostics:
+        lines.extend(["", "## Diagnostics", ""])
+        for message in diagnostic_messages(bundle.diagnostics):
+            lines.append(f"- {message[0].upper() + message[1:] }.")
     return "\n".join(lines) + "\n"
 
 

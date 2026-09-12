@@ -5,6 +5,7 @@ from pathlib import Path
 from daytrace.markdown import (
     format_duration,
     render_digest_markdown,
+    render_episode_markdown,
     render_markdown,
     render_session_markdown,
 )
@@ -50,8 +51,21 @@ def test_duration_does_not_inflate_short_activity() -> None:
     assert format_duration(3600) == "1h"
 
 
-def test_render_session_markdown_matches_golden(make_bundle) -> None:
-    rendered = render_session_markdown(make_bundle())
+def test_default_markdown_renders_compact_episodes(make_episode_bundle) -> None:
+    rendered = render_episode_markdown(make_episode_bundle())
+    assert "Summary: Deterministic activity episodes" in rendered
+    assert "Activity transitions: 1" in rendered
+    assert "session-001" not in rendered
+
+
+def test_raw_markdown_retains_fine_grained_sessions(make_episode_bundle) -> None:
+    rendered = render_episode_markdown(make_episode_bundle(), raw=True)
+    assert "## Fine-grained activity" in rendered
+    assert "session-001" in rendered
+
+
+def test_render_episode_markdown_matches_golden(make_episode_bundle) -> None:
+    rendered = render_episode_markdown(make_episode_bundle())
     expected = Path("tests/golden/daytrace-sessions-2026-09-10.md").read_text(
         encoding="utf-8"
     )

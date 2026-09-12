@@ -15,8 +15,9 @@ from zoneinfo import ZoneInfoNotFoundError
 
 from daytrace.activitywatch import DEFAULT_SERVER, collect_day
 from daytrace.diagnostics import diagnostic_messages
-from daytrace.json_output import render_digest_json, render_session_json
-from daytrace.markdown import render_digest_markdown, render_session_markdown
+from daytrace.episode import compact_sessions
+from daytrace.json_output import render_digest_json, render_episode_json
+from daytrace.markdown import render_digest_markdown, render_episode_markdown
 from daytrace.providers import OpenAIProvider, SummaryProviderError
 from daytrace.source import ActivityWatchConnectionError
 from daytrace.summarize import (
@@ -119,9 +120,11 @@ def _emit(text: str, output: Path | None) -> bool:
 
 
 def _render_deterministic(bundle, args: argparse.Namespace) -> str:
+    if not hasattr(bundle, "episodes"):
+        bundle = compact_sessions(bundle)
     if args.format == "json":
-        return render_session_json(bundle, details=args.details or args.raw)
-    return render_session_markdown(bundle, details=args.details, raw=args.raw)
+        return render_episode_json(bundle, details=args.details, raw=args.raw)
+    return render_episode_markdown(bundle, details=args.details, raw=args.raw)
 
 
 def _render_diagnostics(bundle, output_format: str) -> str:

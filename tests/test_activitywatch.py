@@ -68,6 +68,7 @@ def test_collect_day_runs_sanitized_session_pipeline() -> None:
     )
 
     assert bundle.focused_seconds == 480
+    assert len(bundle.episodes) == 1
     assert len(bundle.sessions) == 1
     assert bundle.sessions[0].label == "jmoraispk/perflife"
     assert bundle.diagnostics == (
@@ -87,7 +88,7 @@ def test_summarize_day_keeps_deterministic_compatibility_api() -> None:
         warn=warnings.append,
     )
 
-    assert "Summary: Deterministic activity sessions" in markdown
+    assert "Summary: Deterministic activity episodes" in markdown
     assert "09:00–09:10" in markdown
     assert "(8m)" in markdown
     assert warnings == [

@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 
 from daytrace.models import (
+    ActivityEpisode,
     ActivitySession,
     ActivitySlice,
     ContextSignal,
+    EpisodeBundle,
     SessionBundle,
     SummaryProvenance,
     WorkstreamDigest,
@@ -83,6 +85,67 @@ def render_session_json(bundle: SessionBundle, *, details: bool = False) -> str:
             for item in bundle.diagnostics
         ],
     }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+
+
+def _episode_dict(item: ActivityEpisode, *, details: bool) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "id": item.episode_id,
+        "start": item.start.isoformat(),
+        "end": item.end.isoformat(),
+        "active_seconds": item.active_seconds,
+        "focused_seconds": item.focused_seconds,
+        "label": item.label,
+        "anchors": [
+            {"kind": value.kind, "value": value.value} for value in item.anchors
+        ],
+        "applications": [
+            {"value": value.value, "count": value.count}
+            for value in item.applications
+        ],
+        "activity_labels": [
+            {"value": value.value, "count": value.count}
+            for value in item.activity_labels
+        ],
+        "transition_count": len(item.session_ids),
+        "outcome_signals": [
+            {"code": value.code, "label": value.label}
+            for value in item.outcome_signals
+        ],
+    }
+    if details:
+        payload["session_ids"] = list(item.session_ids)
+        payload["evidence_ids"] = list(item.evidence_ids)
+    return payload
+
+
+def render_episode_json(
+    bundle: EpisodeBundle, *, details: bool = False, raw: bool = False
+) -> str:
+    payload = {
+        "schema": "daytrace.episode-bundle.v1",
+        "date": bundle.day.isoformat(),
+        "timezone": bundle.timezone_name,
+        "timezone_status": "inferred_at_query",
+        "focused_seconds": bundle.focused_seconds,
+        "episodes": [
+            _episode_dict(item, details=details)
+            for item in sorted(
+                bundle.episodes, key=lambda value: (value.start, value.episode_id)
+            )
+        ],
+        "diagnostics": [
+            {"code": item.code.value, "count": item.count}
+            for item in bundle.diagnostics
+        ],
+    }
+    if raw:
+        payload["sessions"] = [
+            _session_dict(item, details=True)
+            for item in sorted(
+                bundle.sessions, key=lambda value: (value.start, value.session_id)
+            )
+        ]
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
 
 

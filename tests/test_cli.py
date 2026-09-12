@@ -200,7 +200,7 @@ def test_ai_failure_writes_deterministic_fallback_and_returns_two(
 
     captured = capsys.readouterr()
     assert status == 2
-    assert "Summary: Deterministic activity sessions" in captured.out
+    assert "Summary: Deterministic activity episodes" in captured.out
     assert "AI summary unavailable" in captured.err
 
 
@@ -235,5 +235,5 @@ def test_json_format_produces_json_only_stdout(
 
     captured = capsys.readouterr()
     assert status == 0
-    assert json.loads(captured.out)["schema"] == "daytrace.session-bundle.v1"
+    assert json.loads(captured.out)["schema"] == "daytrace.episode-bundle.v1"
     assert captured.err == ""
