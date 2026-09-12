@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from dataclasses import replace
 import json
 
 import pytest
@@ -103,3 +104,25 @@ def test_sensitive_trace_shapes_never_reach_bundle_provider_or_outputs(
         json.dumps(recording_provider.requests[0].payload),
     )
     assert all(secret not in output for secret in SENSITIVE for output in outputs)
+
+
+def test_cloud_episode_label_removes_direct_message_participant(
+    make_episode, make_episode_bundle
+) -> None:
+    private_name = "Example Person"
+    episode = replace(
+        make_episode(),
+        label=f"{private_name} (DM) - Company - Slack",
+        activity_labels=(
+            replace(
+                make_episode().activity_labels[0],
+                value=f"{private_name} (DM) - Company - Slack",
+            ),
+        ),
+    )
+
+    request = build_summary_request(make_episode_bundle((episode,)))
+    rendered = json.dumps(request.payload)
+
+    assert private_name not in rendered
+    assert "Direct message - Slack" in rendered

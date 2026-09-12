@@ -13,8 +13,9 @@ architecture planning phase.
 
 The Python CLI reads a selected day from an already-running ActivityWatch
 instance, sanitizes and fuses its watcher data, and reconstructs project-neutral
-activity sessions. It can stop there with a fully local deterministic report,
-or—only when explicitly requested—send the sanitized sessions to OpenAI to
+activity sessions, then compacts them into project-neutral activity episodes.
+It can stop there with a fully local deterministic report, or—only when
+explicitly requested—send minimized episodes to OpenAI to
 infer broad workstreams, topics, and evidence-backed apparent achievements.
 
 DayTrace's inferred workstreams are not canonical project definitions. They are
@@ -38,32 +39,36 @@ uv run daytrace activitywatch --date 2026-09-10 --output daytrace.md
 After the package is published, the equivalent one-off workflows are:
 
 ```powershell
-# Project-neutral local sessions; no model or key
-uvx daytrace activitywatch --date 2026-09-10 --output daytrace.md
+# Project-neutral compact episodes; no model or key
+uvx daytrace@latest activitywatch --date 2026-09-10 --output daytrace.md
 
 # AI-assisted inferred workstreams; key entered in a hidden prompt
-uvx daytrace activitywatch --date 2026-09-10 --summary ai `
+uvx daytrace@latest activitywatch --date 2026-09-10 --summary ai `
   --provider openai --model YOUR_MODEL --output daytrace.md
 
 # Structured handoff for the future Second Brain plugin
-uvx daytrace activitywatch --date 2026-09-10 --summary ai `
+uvx daytrace@latest activitywatch --date 2026-09-10 --summary ai `
   --provider openai --model YOUR_MODEL --format json --output daytrace.json
 ```
 
-The deterministic mode needs no API key. It emits coherent sessions with exact
+The deterministic mode needs no API key. It emits compact episodes with exact
 active duration while using current-window events as the foreground-time
-authority; simultaneous browser and editor events enrich those sessions rather
-than double-counting time. Short activity is shown as `<1m`.
+authority; simultaneous browser and editor events enrich those episodes rather
+than double-counting time. Repeated assistant, terminal, new-tab, and file-manager
+transitions are aggregated around compatible work anchors. Short activity is
+shown as `<1m`.
 
 AI mode is a separate second stage. Before any cloud request, DayTrace reports
-the number of sanitized sessions, request character count, included data
-categories, provider, and model, then asks for confirmation. Only afterward
-does it request the OpenAI API key through a hidden prompt. The key is not
-stored by DayTrace. Never put a key in command-line arguments or paste it into
-support logs.
+the number of compact episodes, planned summary chunks and merge call, total
+initial request size, included data categories, provider, and model, then asks
+for confirmation. Most compact days use one call; unusually large days are
+partitioned at episode boundaries and receive one constrained merge call. Only
+after consent does DayTrace request the OpenAI API key through a hidden prompt.
+The key is held in memory only. Never put a key in command-line arguments or
+paste it into support logs.
 
 The model returns structured data that DayTrace validates locally. Each topic
-and visible achievement must cite a supplied session, every session must be
+and visible achievement must cite a supplied episode, every episode must be
 allocated exactly once, and model-produced text receives another secret scan.
 Durations always come from the deterministic local trace. If an explicitly
 requested AI call or response fails, DayTrace writes the deterministic fallback
@@ -71,14 +76,18 @@ and exits with status 2.
 
 Useful local modes:
 
-- `--details` adds sanitized contexts and evidence identifiers.
-- `--raw` shows sanitized session slices and cannot be combined with
+- `--details` adds sanitized episode membership and evidence identifiers.
+- `--raw` appends the fine-grained sanitized session/slice audit trail and cannot be combined with
   `--details` or AI mode.
 - `--diagnostics` prints only aggregate, content-free counts and coverage.
 - `--format json` emits a versioned structured artifact suitable for another
   plugin; Markdown is the default.
 - `--yes` confirms the disclosed cloud send for non-interactive AI automation,
   but the API key is still collected separately through the hidden prompt.
+
+If Windows reports that uv cannot hardlink across cache and target filesystems,
+use `uvx --link-mode=copy daytrace@latest ...`; this affects installation speed,
+not DayTrace output or correctness.
 
 Python callers—including a future second-brain integration—can use the same
 project-neutral collection and deterministic renderer directly:
@@ -97,6 +106,11 @@ does not retain images, audio, video, raw browser URLs, query strings, source
 event IDs, source bucket IDs, or a second copy of ActivityWatch events. Use
 `--server` for another ActivityWatch endpoint and `--timezone` for an explicit
 IANA timezone such as `America/Los_Angeles`.
+
+DayTrace deliberately does not read the Obsidian vault or decide canonical
+project names. Its workstream digest is designed as the handoff to the Second
+Brain plugin, which can map the evidence-based daily workstreams onto project
+definitions stored in Obsidian.
 
 ## Product decisions
 

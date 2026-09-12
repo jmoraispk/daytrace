@@ -76,7 +76,14 @@ def _episode_payload(
 ) -> dict[str, object]:
     anchors = _clean_items(
         [
-            {"kind": item.kind, "value": minimize_cloud_text(item.value)}
+            {
+                "kind": item.kind,
+                "value": (
+                    minimize_cloud_title(None, item.value)
+                    if item.kind == "title"
+                    else minimize_cloud_text(item.value)
+                ),
+            }
             for item in episode.anchors
         ]
     )
@@ -112,7 +119,7 @@ def _episode_payload(
         "end": episode.end.isoformat(),
         "active_seconds": episode.active_seconds,
         "focused_seconds": episode.focused_seconds,
-        "label": minimize_cloud_text(episode.label),
+        "label": minimize_cloud_title(None, episode.label),
         "anchors": anchors,
         "applications": applications,
         "activity_labels": activity_labels,
