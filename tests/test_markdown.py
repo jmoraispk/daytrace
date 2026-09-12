@@ -2,7 +2,12 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
-from daytrace.markdown import format_duration, render_markdown, render_session_markdown
+from daytrace.markdown import (
+    format_duration,
+    render_digest_markdown,
+    render_markdown,
+    render_session_markdown,
+)
 from daytrace.models import SourceKind
 from daytrace.report import build_report
 from daytrace.time import resolve_day
@@ -53,6 +58,23 @@ def test_render_session_markdown_matches_golden(make_bundle) -> None:
     assert rendered == expected
     assert "Project filter" not in rendered
     assert "?" not in rendered
+
+
+def test_render_workstream_digest_matches_golden(
+    make_bundle, make_digest, make_provenance
+) -> None:
+    rendered = render_digest_markdown(
+        make_bundle(), make_digest(), make_provenance()
+    )
+    expected = Path("tests/golden/daytrace-workstreams-2026-09-10.md").read_text(
+        encoding="utf-8"
+    )
+    assert rendered == expected
+    assert "## PerfLife" in rendered
+    assert "### Apparent achievements" in rendered
+    assert "### Work and topics" in rendered
+    assert "### Activity" in rendered
+    assert "Inferred workstream" in rendered
 
 
 def test_empty_report_is_valid_markdown() -> None:

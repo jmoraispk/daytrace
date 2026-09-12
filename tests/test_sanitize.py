@@ -2,7 +2,7 @@ from dataclasses import replace
 
 from daytrace.diagnostics import DiagnosticCollector
 from daytrace.models import SourceKind
-from daytrace.sanitize import sanitize_records
+from daytrace.sanitize import sanitize_generated_text, sanitize_records
 
 
 def test_sanitizes_url_like_title_tokens_email_and_edge_suffix(make_record) -> None:
@@ -52,3 +52,7 @@ def test_retains_bounded_repository_and_merge_request_paths(make_record) -> None
 
     assert sanitized[0].url_path == "/jmoraispk/perflife"
     assert sanitized[1].url_path == "/gputelecom/aerial-sls/-/merge_requests/155"
+
+
+def test_generated_text_gets_a_second_secret_scan() -> None:
+    assert sanitize_generated_text("token=abcdefghijklmnop") == "[redacted-secret]"

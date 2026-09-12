@@ -9,9 +9,16 @@ from daytrace.models import (
     ContextSignal,
     DiagnosticCode,
     DiagnosticCount,
+    Confidence,
+    OutcomeStrength,
+    OutcomeSummary,
     SanitizedObservation,
     SessionBundle,
+    SummaryProvenance,
     SourceKind,
+    TopicSummary,
+    WorkstreamDigest,
+    WorkstreamSummary,
 )
 
 
@@ -50,6 +57,54 @@ def make_record():
             url_path=url_path,
             language=language,
             status=status,
+        )
+
+    return factory
+
+
+@pytest.fixture
+def make_digest():
+    def factory() -> WorkstreamDigest:
+        return WorkstreamDigest(
+            workstreams=(
+                WorkstreamSummary(
+                    label="PerfLife",
+                    confidence=Confidence.HIGH,
+                    session_ids=("session-001",),
+                    topics=(
+                        TopicSummary(
+                            "Defined a health dashboard", ("session-001",)
+                        ),
+                    ),
+                    outcomes=(
+                        OutcomeSummary(
+                            "Created the named repository",
+                            OutcomeStrength.OBSERVED,
+                            ("session-001",),
+                        ),
+                        OutcomeSummary(
+                            "Configured the health dashboard",
+                            OutcomeStrength.LIKELY,
+                            ("session-001",),
+                        ),
+                    ),
+                ),
+            ),
+            unassigned_session_ids=(),
+        )
+
+    return factory
+
+
+@pytest.fixture
+def make_provenance():
+    def factory() -> SummaryProvenance:
+        return SummaryProvenance(
+            provider="openai",
+            model="gpt-test",
+            prompt_schema="daytrace.workstream-prompt.v1",
+            input_tokens=120,
+            output_tokens=30,
         )
 
     return factory

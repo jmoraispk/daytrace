@@ -10,9 +10,14 @@ from daytrace.models import (
     ActivityReport,
     ActivitySession,
     ActivitySlice,
+    Confidence,
     ContextSignal,
+    OutcomeStrength,
     SessionBundle,
     SourceKind,
+    SummaryProvenance,
+    WorkstreamDigest,
+    WorkstreamSummary,
 )
 
 
@@ -191,4 +196,98 @@ def render_session_markdown(
         lines.extend(["", "## Diagnostics", ""])
         for message in diagnostic_messages(bundle.diagnostics):
             lines.append(f"- {message[0].upper() + message[1:]}.")
+    return "\n".join(lines) + "\n"
+
+
+def _digest_header(
+    bundle: SessionBundle, provenance: SummaryProvenance
+) -> list[str]:
+    focused = (
+        format_duration(bundle.focused_seconds)
+        if bundle.focused_seconds is not None
+        else "Unavailable"
+    )
+    return [
+        f"# DayTrace — {bundle.day.isoformat()}",
+        "",
+        f"Timezone: {_code(bundle.timezone_name)} (inferred at query time)",
+        f"Focused activity: {focused}",
+        f"Summary: AI-assisted workstreams ({_code(provenance.provider)} / "
+        f"{_code(provenance.model)})",
+    ]
+
+
+def _workstream_heading(
+    item: WorkstreamSummary, seconds: float
+) -> list[str]:
+    confidence = {
+        Confidence.HIGH: "High",
+        Confidence.MEDIUM: "Medium",
+        Confidence.LOW: "Low",
+    }[item.confidence]
+    return [
+        "",
+        f"## {_escape(item.label)}",
+        "",
+        f"Inferred workstream · {confidence} confidence · {format_duration(seconds)}",
+    ]
+
+
+def render_digest_markdown(
+    bundle: SessionBundle,
+    digest: WorkstreamDigest,
+    provenance: SummaryProvenance,
+    *,
+    details: bool = False,
+) -> str:
+    session_by_id = {item.session_id: item for item in bundle.sessions}
+    zone = ZoneInfo(bundle.timezone_name)
+    lines = _digest_header(bundle, provenance)
+    for workstream in digest.workstreams:
+        sessions = tuple(session_by_id[item] for item in workstream.session_ids)
+        seconds = sum(item.active_seconds for item in sessions)
+        lines.extend(_workstream_heading(workstream, seconds))
+        lines.extend(["", "### Apparent achievements", ""])
+        visible_outcomes = [
+            item
+            for item in workstream.outcomes
+            if item.strength is not OutcomeStrength.NONE
+        ]
+        if not visible_outcomes:
+            lines.append("No completion should be claimed from this trace alone.")
+        for outcome in visible_outcomes:
+            prefix = "Likely: " if outcome.strength is OutcomeStrength.LIKELY else ""
+            citations = ", ".join(_code(item) for item in outcome.evidence)
+            lines.append(f"- {prefix}{_escape(outcome.text)} ({citations})")
+
+        lines.extend(["", "### Work and topics", ""])
+        if not workstream.topics:
+            lines.append("No specific topics identified.")
+        for topic in workstream.topics:
+            suffix = ""
+            if details:
+                suffix = " (" + ", ".join(_code(item) for item in topic.evidence) + ")"
+            lines.append(f"- {_escape(topic.text)}{suffix}")
+
+        lines.extend(["", "### Activity", ""])
+        for session in sorted(sessions, key=lambda value: (value.start, value.session_id)):
+            lines.append(
+                f"- {_session_times(session, zone)} — {_code(session.label)} "
+                f"({format_duration(session.active_seconds)})"
+            )
+            if details:
+                _append_session_details(lines, session, zone)
+
+    lines.extend(["", "## Unassigned activity", ""])
+    if not digest.unassigned_session_ids:
+        lines.append("None.")
+    else:
+        for session_id in digest.unassigned_session_ids:
+            session = session_by_id[session_id]
+            lines.append(
+                f"- {_session_times(session, zone)} — {_code(session.label)} "
+                f"({format_duration(session.active_seconds)})"
+            )
+            if details:
+                _append_session_details(lines, session, zone)
     return "\n".join(lines) + "\n"

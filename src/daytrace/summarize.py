@@ -17,6 +17,7 @@ from daytrace.models import (
     WorkstreamDigest,
     WorkstreamSummary,
 )
+from daytrace.sanitize import sanitize_generated_text
 
 
 PROMPT_SCHEMA = "daytrace.workstream-prompt.v1"
@@ -144,7 +145,7 @@ def build_summary_request(bundle: SessionBundle) -> SummaryRequest:
 def _bounded_text(value: object, field: str, limit: int = 500) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise SummaryValidationError(f"invalid {field}")
-    return value.strip()
+    return sanitize_generated_text(value.strip())
 
 
 def _object(

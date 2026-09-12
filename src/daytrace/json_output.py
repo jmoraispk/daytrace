@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import json
 
-from daytrace.models import ActivitySession, ActivitySlice, ContextSignal, SessionBundle
+from daytrace.models import (
+    ActivitySession,
+    ActivitySlice,
+    ContextSignal,
+    SessionBundle,
+    SummaryProvenance,
+    WorkstreamDigest,
+)
 
 
 def _context_dict(item: ContextSignal) -> dict[str, object]:
@@ -70,6 +77,66 @@ def render_session_json(bundle: SessionBundle, *, details: bool = False) -> str:
             for item in sorted(
                 bundle.sessions, key=lambda value: (value.start, value.session_id)
             )
+        ],
+        "diagnostics": [
+            {"code": item.code.value, "count": item.count}
+            for item in bundle.diagnostics
+        ],
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+
+
+def render_digest_json(
+    bundle: SessionBundle,
+    digest: WorkstreamDigest,
+    provenance: SummaryProvenance,
+    *,
+    details: bool = False,
+) -> str:
+    session_by_id = {item.session_id: item for item in bundle.sessions}
+    workstreams = []
+    for item in digest.workstreams:
+        sessions = tuple(session_by_id[value] for value in item.session_ids)
+        workstreams.append(
+            {
+                "label": item.label,
+                "confidence": item.confidence.value,
+                "active_seconds": sum(value.active_seconds for value in sessions),
+                "session_ids": list(item.session_ids),
+                "topics": [
+                    {"text": topic.text, "evidence": list(topic.evidence)}
+                    for topic in item.topics
+                ],
+                "outcomes": [
+                    {
+                        "text": outcome.text,
+                        "strength": outcome.strength.value,
+                        "evidence": list(outcome.evidence),
+                    }
+                    for outcome in item.outcomes
+                ],
+                "activity": [
+                    _session_dict(value, details=details) for value in sessions
+                ],
+            }
+        )
+    payload = {
+        "schema": "daytrace.workstream-report.v1",
+        "date": bundle.day.isoformat(),
+        "timezone": bundle.timezone_name,
+        "timezone_status": "inferred_at_query",
+        "focused_seconds": bundle.focused_seconds,
+        "summary": {
+            "provider": provenance.provider,
+            "model": provenance.model,
+            "prompt_schema": provenance.prompt_schema,
+            "input_tokens": provenance.input_tokens,
+            "output_tokens": provenance.output_tokens,
+        },
+        "workstreams": workstreams,
+        "unassigned_activity": [
+            _session_dict(session_by_id[value], details=details)
+            for value in digest.unassigned_session_ids
         ],
         "diagnostics": [
             {"code": item.code.value, "count": item.count}

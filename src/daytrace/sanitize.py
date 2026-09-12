@@ -78,6 +78,12 @@ def _safe_text(
     return cleaned or None
 
 
+def sanitize_generated_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value)
+    compact = " ".join(normalized.replace("\r", " ").replace("\n", " ").split())
+    return SECRET.sub("[redacted-secret]", EMAIL.sub("[redacted-email]", compact))
+
+
 def sanitize_records(
     records: Iterable[ActivityRecord],
     diagnose: Callable[[DiagnosticCode], None],

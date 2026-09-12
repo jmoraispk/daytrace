@@ -100,3 +100,28 @@ def test_omits_none_outcomes_and_returns_provenance(make_bundle) -> None:
     ]
     assert provenance.prompt_schema == PROMPT_SCHEMA
     assert (provenance.input_tokens, provenance.output_tokens) == (10, 5)
+
+
+def test_validated_digest_contains_only_scanned_generated_text(make_bundle) -> None:
+    payload = {
+        "schema": "daytrace.workstream-digest.v1",
+        "workstreams": [
+            {
+                "label": "PerfLife",
+                "confidence": "high",
+                "session_ids": ["session-001"],
+                "topics": [
+                    {
+                        "text": "token=abcdefghijklmnop",
+                        "evidence": ["session-001"],
+                    }
+                ],
+                "outcomes": [],
+            }
+        ],
+        "unassigned_session_ids": [],
+    }
+
+    digest = validate_digest(payload, make_bundle())
+
+    assert digest.workstreams[0].topics[0].text == "[redacted-secret]"
