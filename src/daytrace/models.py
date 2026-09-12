@@ -22,6 +22,18 @@ class DiagnosticCode(StrEnum):
     SANITIZED_FIELD = "sanitized-field"
 
 
+class Confidence(StrEnum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class OutcomeStrength(StrEnum):
+    OBSERVED = "observed"
+    LIKELY = "likely"
+    NONE = "none"
+
+
 @dataclass(frozen=True, slots=True)
 class ServerEndpoint:
     protocol: str
@@ -175,6 +187,61 @@ class SessionBundle:
     focused_seconds: float | None
     sessions: tuple[ActivitySession, ...]
     diagnostics: tuple[DiagnosticCount, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TopicSummary:
+    text: str
+    evidence: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OutcomeSummary:
+    text: str
+    strength: OutcomeStrength
+    evidence: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkstreamSummary:
+    label: str
+    confidence: Confidence
+    session_ids: tuple[str, ...]
+    topics: tuple[TopicSummary, ...]
+    outcomes: tuple[OutcomeSummary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkstreamDigest:
+    workstreams: tuple[WorkstreamSummary, ...]
+    unassigned_session_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SummaryRequest:
+    schema: str
+    payload: Mapping[str, object]
+    character_count: int
+    session_count: int
+    data_categories: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderResponse:
+    payload: Mapping[str, object]
+    provider: str
+    model: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SummaryProvenance:
+    provider: str
+    model: str
+    prompt_schema: str
+    input_tokens: int | None
+    output_tokens: int | None
 
 
 @dataclass(frozen=True, slots=True)
