@@ -12,6 +12,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
   "aw-client>=0.5.15,<0.6",
+  "openai>=2,<3",
   "tzlocal>=5.4,<6",
   "tzdata>=2026.3; sys_platform == 'win32'",
 ]
