@@ -42,5 +42,7 @@ jobs:
         working-directory: packages/daytrace-core
       - run: npm run build
         working-directory: packages/daytrace-core
+      - run: npm run pack:check
+        working-directory: packages/daytrace-core
       - run: npm run smoke:browser
         working-directory: packages/daytrace-core
