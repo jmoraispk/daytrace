@@ -16,6 +16,8 @@ from daytrace.models import (
     ServerInfo,
     SummaryProvenance,
 )
+from daytrace.prompts import MERGE_SYSTEM_PROMPT, SYSTEM_PROMPT
+from daytrace.providers.openai import merge_json_format, workstream_json_format
 from daytrace.summarize import build_summary_plan, validate_digest
 from daytrace.time import resolve_day
 
@@ -61,6 +63,7 @@ def build_reference_outputs() -> dict[str, str]:
         "planned_request_count": plan.planned_request_count,
         "data_categories": list(plan.data_categories),
         "request_episode_ids": [list(item.episode_ids) for item in plan.requests],
+        "request_payloads": [dict(item.payload) for item in plan.requests],
     }
 
     digest_input = json.loads((FIXTURES / "digest-input.json").read_text())
@@ -90,10 +93,28 @@ def build_reference_outputs() -> dict[str, str]:
 
     return {
         "pipeline-expected.json": json.dumps(episode_payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        "episode-json-expected.json": render_episode_json(bundle, details=True, raw=True),
         "episode-expected.md": render_episode_markdown(bundle, details=True, raw=True),
         "digest-expected.json": render_digest_json(bundle, digest, provenance, details=True),
         "digest-expected.md": render_digest_markdown(bundle, digest, provenance, details=True),
         "dst-expected.json": json.dumps(dst, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        "prompts-expected.json": json.dumps(
+            {"merge": MERGE_SYSTEM_PROMPT, "system": SYSTEM_PROMPT},
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+        ) + "\n",
+        "formats-expected.json": json.dumps(
+            {
+                "merge": merge_json_format(("provisional-001-001",)),
+                "merge_empty": merge_json_format(()),
+                "workstream": workstream_json_format(("episode-001",)),
+                "workstream_empty": workstream_json_format(()),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+        ) + "\n",
     }
 
 

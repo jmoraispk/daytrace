@@ -61,4 +61,17 @@ describe("summary planning", () => {
     expect(JSON.stringify(workstreamJsonFormat(["episode-001"]))).toContain("episode-001");
     expect(JSON.stringify(mergeJsonFormat(request.provisionalIds))).toContain("provisional-001-001");
   });
+
+  it("retains strict item schemas for empty request formats", () => {
+    const workstream = workstreamJsonFormat([]) as any;
+    const merge = mergeJsonFormat([]) as any;
+    expect(workstream.schema.properties.workstreams.items.required).toEqual([
+      "label", "confidence", "episode_ids", "topics", "outcomes",
+    ]);
+    expect(workstream.schema.properties.workstreams.maxItems).toBe(0);
+    expect(merge.schema.properties.groups.items.required).toEqual([
+      "label", "confidence", "provisional_ids",
+    ]);
+    expect(merge.schema.properties.groups.maxItems).toBe(0);
+  });
 });

@@ -80,4 +80,21 @@ describe("collectDay", () => {
     })).rejects.toMatchObject({ name: "AbortError" });
     expect(calls).toBe(1);
   });
+
+  it("preserves a host-defined abort reason", async () => {
+    const controller = new AbortController();
+    const reason = new Error("host cancelled");
+    const transport: ActivityWatchTransport = {
+      async request() {
+        controller.abort(reason);
+        throw reason;
+      },
+    };
+    await expect(collectDay({
+      day: "2026-09-10",
+      timezoneName: "UTC",
+      transport,
+      signal: controller.signal,
+    })).rejects.toBe(reason);
+  });
 });

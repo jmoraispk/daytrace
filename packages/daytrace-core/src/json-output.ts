@@ -29,21 +29,35 @@ function pythonIsoTimestamp(value: string): string {
     : `${base.slice(0, 23)}000+00:00`;
 }
 
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (typeof value === "object" && value !== null) {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, item]) => item !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, canonical(item)]),
-    );
+function compareKeys(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function prettyJson(value: unknown, depth: number, key?: string): string {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "null";
+    return Number.isInteger(value) && key?.endsWith("_seconds") === true ? `${value}.0` : String(value);
   }
-  return value;
+  const current = "  ".repeat(depth);
+  const nested = "  ".repeat(depth + 1);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    return `[\n${value.map((item) => `${nested}${prettyJson(item, depth + 1)}`).join(",\n")}\n${current}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => compareKeys(left, right));
+    if (entries.length === 0) return "{}";
+    return `{\n${entries.map(([itemKey, item]) => `${nested}${JSON.stringify(itemKey)}: ${prettyJson(item, depth + 1, itemKey)}`).join(",\n")}\n${current}}`;
+  }
+  throw new TypeError("unsupported JSON value");
 }
 
 export function stableJson(value: JsonValue | Readonly<Record<string, unknown>>): string {
-  return `${JSON.stringify(canonical(value), null, 2)}\n`;
+  return `${prettyJson(value, 0)}\n`;
 }
 
 function contextValue(item: ContextSignal): Record<string, unknown> {

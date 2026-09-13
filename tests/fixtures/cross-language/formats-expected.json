@@ -1,0 +1,372 @@
+{
+  "merge": {
+    "name": "daytrace_workstream_merge_v1",
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "groups": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              "label": {
+                "maxLength": 120,
+                "type": "string"
+              },
+              "provisional_ids": {
+                "items": {
+                  "enum": [
+                    "provisional-001-001"
+                  ],
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "label",
+              "confidence",
+              "provisional_ids"
+            ],
+            "type": "object"
+          },
+          "maxItems": 30,
+          "type": "array"
+        },
+        "schema": {
+          "const": "daytrace.workstream-merge.v1",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "groups"
+      ],
+      "type": "object"
+    },
+    "strict": true,
+    "type": "json_schema"
+  },
+  "merge_empty": {
+    "name": "daytrace_workstream_merge_v1",
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "groups": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              "label": {
+                "maxLength": 120,
+                "type": "string"
+              },
+              "provisional_ids": {
+                "items": {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "label",
+              "confidence",
+              "provisional_ids"
+            ],
+            "type": "object"
+          },
+          "maxItems": 0,
+          "type": "array"
+        },
+        "schema": {
+          "const": "daytrace.workstream-merge.v1",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "groups"
+      ],
+      "type": "object"
+    },
+    "strict": true,
+    "type": "json_schema"
+  },
+  "workstream": {
+    "name": "daytrace_workstream_digest_v2",
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "daytrace.workstream-digest.v2",
+          "type": "string"
+        },
+        "unassigned_episode_ids": {
+          "items": {
+            "enum": [
+              "episode-001"
+            ],
+            "maxLength": 50,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workstreams": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              "episode_ids": {
+                "items": {
+                  "enum": [
+                    "episode-001"
+                  ],
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "label": {
+                "maxLength": 120,
+                "type": "string"
+              },
+              "outcomes": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "evidence": {
+                      "items": {
+                        "enum": [
+                          "episode-001"
+                        ],
+                        "maxLength": 50,
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "strength": {
+                      "enum": [
+                        "observed",
+                        "likely",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
+                    "text": {
+                      "maxLength": 500,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "strength",
+                    "evidence"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              "topics": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "evidence": {
+                      "items": {
+                        "enum": [
+                          "episode-001"
+                        ],
+                        "maxLength": 50,
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "text": {
+                      "maxLength": 500,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "evidence"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 20,
+                "type": "array"
+              }
+            },
+            "required": [
+              "label",
+              "confidence",
+              "episode_ids",
+              "topics",
+              "outcomes"
+            ],
+            "type": "object"
+          },
+          "maxItems": 30,
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema",
+        "workstreams",
+        "unassigned_episode_ids"
+      ],
+      "type": "object"
+    },
+    "strict": true,
+    "type": "json_schema"
+  },
+  "workstream_empty": {
+    "name": "daytrace_workstream_digest_v2",
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "daytrace.workstream-digest.v2",
+          "type": "string"
+        },
+        "unassigned_episode_ids": {
+          "items": {
+            "maxLength": 50,
+            "type": "string"
+          },
+          "maxItems": 0,
+          "type": "array"
+        },
+        "workstreams": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              "episode_ids": {
+                "items": {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "label": {
+                "maxLength": 120,
+                "type": "string"
+              },
+              "outcomes": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "evidence": {
+                      "items": {
+                        "maxLength": 50,
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "strength": {
+                      "enum": [
+                        "observed",
+                        "likely",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
+                    "text": {
+                      "maxLength": 500,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "strength",
+                    "evidence"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              "topics": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "evidence": {
+                      "items": {
+                        "maxLength": 50,
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "text": {
+                      "maxLength": 500,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "evidence"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 20,
+                "type": "array"
+              }
+            },
+            "required": [
+              "label",
+              "confidence",
+              "episode_ids",
+              "topics",
+              "outcomes"
+            ],
+            "type": "object"
+          },
+          "maxItems": 0,
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema",
+        "workstreams",
+        "unassigned_episode_ids"
+      ],
+      "type": "object"
+    },
+    "strict": true,
+    "type": "json_schema"
+  }
+}

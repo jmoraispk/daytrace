@@ -186,19 +186,18 @@ function idArraySchema(ids: readonly string[], nonempty: boolean): JsonObject {
 
 export function workstreamJsonFormat(episodeIds: readonly string[]): JsonObject {
   const evidence = () => idArraySchema(episodeIds, true);
-  const workstreams: JsonObject = episodeIds.length === 0 ? {
-    type: "array", maxItems: 0, items: { type: "object" },
-  } : {
-    type: "array", maxItems: 30,
+  const hasEpisodes = episodeIds.length > 0;
+  const workstreams: JsonObject = {
+    type: "array", maxItems: hasEpisodes ? 30 : 0,
     items: {
       type: "object", additionalProperties: false,
       required: ["label", "confidence", "episode_ids", "topics", "outcomes"],
       properties: {
         label: { type: "string", maxLength: 120 },
         confidence: { type: "string", enum: ["high", "medium", "low"] },
-        episode_ids: idArraySchema(episodeIds, true),
-        topics: { type: "array", maxItems: 20, items: { type: "object", additionalProperties: false, required: ["text", "evidence"], properties: { text: { type: "string", maxLength: 500 }, evidence: evidence() } } },
-        outcomes: { type: "array", maxItems: 20, items: { type: "object", additionalProperties: false, required: ["text", "strength", "evidence"], properties: { text: { type: "string", maxLength: 500 }, strength: { type: "string", enum: ["observed", "likely", "none"] }, evidence: evidence() } } },
+        episode_ids: idArraySchema(episodeIds, hasEpisodes),
+        topics: { type: "array", maxItems: 20, items: { type: "object", additionalProperties: false, required: ["text", "evidence"], properties: { text: { type: "string", maxLength: 500 }, evidence: hasEpisodes ? evidence() : idArraySchema([], false) } } },
+        outcomes: { type: "array", maxItems: 20, items: { type: "object", additionalProperties: false, required: ["text", "strength", "evidence"], properties: { text: { type: "string", maxLength: 500 }, strength: { type: "string", enum: ["observed", "likely", "none"] }, evidence: hasEpisodes ? evidence() : idArraySchema([], false) } } },
       },
     },
   };
@@ -217,6 +216,7 @@ export function workstreamJsonFormat(episodeIds: readonly string[]): JsonObject 
 }
 
 export function mergeJsonFormat(provisionalIds: readonly string[]): JsonObject {
+  const hasIds = provisionalIds.length > 0;
   return {
     type: "json_schema", name: "daytrace_workstream_merge_v1", strict: true,
     schema: {
@@ -224,12 +224,12 @@ export function mergeJsonFormat(provisionalIds: readonly string[]): JsonObject {
       required: ["schema", "groups"],
       properties: {
         schema: { type: "string", const: "daytrace.workstream-merge.v1" },
-        groups: provisionalIds.length === 0 ? { type: "array", maxItems: 0, items: { type: "object" } } : {
-          type: "array", maxItems: 30,
+        groups: {
+          type: "array", maxItems: hasIds ? 30 : 0,
           items: { type: "object", additionalProperties: false, required: ["label", "confidence", "provisional_ids"], properties: {
             label: { type: "string", maxLength: 120 },
             confidence: { type: "string", enum: ["high", "medium", "low"] },
-            provisional_ids: idArraySchema(provisionalIds, true),
+            provisional_ids: idArraySchema(provisionalIds, hasIds),
           } },
         },
       },
@@ -494,7 +494,8 @@ async function providerCall(
     throwIfAborted(options.signal);
     return response;
   } catch (error) {
-    if (options.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+    if (options.signal?.aborted) options.signal.throwIfAborted();
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     if (error instanceof SummaryProviderError) throw error;
     throw new SummaryProviderError("request");
   }
@@ -596,6 +597,7 @@ function failureFrom(error: unknown): DaytraceFailure {
     ...(error.context === undefined ? {} : { context: error.context }),
     ...(error.responseShape === undefined ? {} : { responseShape: error.responseShape }),
   };
+  if (error instanceof SummaryProviderError) return { code: `provider-${error.kind}` };
   if (error instanceof DaytraceError) return { code: error.code };
   return { code: "provider-request" };
 }
@@ -610,7 +612,8 @@ export async function summarizeBundleOrFallback(
     const result = await summarizeBundle(bundle, provider, plan, options);
     return { kind: "ai", ...result };
   } catch (error) {
-    if (options.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+    if (options.signal?.aborted) options.signal.throwIfAborted();
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     return { kind: "deterministic", bundle: episodeBundle(bundle), failure: failureFrom(error) };
   }
 }

@@ -94,60 +94,6 @@
       "start": "2026-09-10T09:00:00+00:00"
     }
   ],
-  "summary_plan": {
-    "data_categories": [
-      "anchor",
-      "application",
-      "activity-label"
-    ],
-    "episode_count": 1,
-    "input_character_count": 597,
-    "planned_request_count": 1,
-    "request_episode_ids": [
-      [
-        "episode-001"
-      ]
-    ],
-    "request_payloads": [
-      {
-        "date": "2026-09-10",
-        "episodes": [
-          {
-            "active_seconds": 540.0,
-            "activity_labels": [
-              {
-                "count": 1,
-                "value": "Demo [redacted-secret]"
-              }
-            ],
-            "anchors": [
-              {
-                "kind": "title",
-                "value": "Demo [redacted-secret]"
-              }
-            ],
-            "applications": [
-              {
-                "count": 2,
-                "value": "Example Editor"
-              }
-            ],
-            "end": "2026-09-10T09:10:00+00:00",
-            "focused_seconds": 540.0,
-            "id": "episode-001",
-            "label": "Demo [redacted-secret]",
-            "outcome_signals": [],
-            "start": "2026-09-10T09:00:00+00:00",
-            "transition_count": 1
-          }
-        ],
-        "focused_seconds": 540.0,
-        "prompt_schema": "daytrace.workstream-prompt.v6",
-        "schema": "daytrace.summary-request.v2",
-        "timezone": "UTC"
-      }
-    ]
-  },
   "timezone": "UTC",
   "timezone_status": "inferred_at_query"
 }

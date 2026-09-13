@@ -6,7 +6,8 @@ import { collectDay } from "../src/activitywatch.js";
 import { renderDigestJson, renderEpisodeJson } from "../src/json-output.js";
 import { renderDigestMarkdown, renderEpisodeMarkdown } from "../src/markdown.js";
 import type { ActivityWatchTransport, SummaryProvenance } from "../src/models.js";
-import { buildSummaryPlan, validateDigest } from "../src/summarize.js";
+import { MERGE_SYSTEM_PROMPT, SYSTEM_PROMPT } from "../src/prompts.js";
+import { buildSummaryPlan, mergeJsonFormat, validateDigest, workstreamJsonFormat } from "../src/summarize.js";
 import { resolveDay } from "../src/time.js";
 
 const FIXTURES = new URL("../../../tests/fixtures/cross-language/", import.meta.url);
@@ -56,8 +57,10 @@ describe("Python/TypeScript parity", () => {
       planned_request_count: plan.plannedRequestCount,
       data_categories: plan.dataCategories,
       request_episode_ids: plan.requests.map((item) => item.episodeIds),
+      request_payloads: plan.requests.map((item) => item.payload),
     };
     expect(actual).toEqual(expected);
+    expect(renderEpisodeJson(bundle, { details: true, raw: true })).toBe(await text("episode-json-expected.json"));
     expect(renderEpisodeMarkdown(bundle, { details: true, raw: true })).toBe(await text("episode-expected.md"));
   });
 
@@ -75,7 +78,7 @@ describe("Python/TypeScript parity", () => {
       outputTokens: raw.output_tokens,
       requestCount: raw.request_count,
     };
-    expect(JSON.parse(renderDigestJson(bundle, digest, provenance, { details: true }))).toEqual(await json("digest-expected.json"));
+    expect(renderDigestJson(bundle, digest, provenance, { details: true })).toBe(await text("digest-expected.json"));
     expect(renderDigestMarkdown(bundle, digest, provenance, { details: true })).toBe(await text("digest-expected.md"));
   });
 
@@ -90,5 +93,15 @@ describe("Python/TypeScript parity", () => {
         duration_seconds: (Date.parse(window.end) - Date.parse(window.start)) / 1000,
       }).toEqual(expected[day]);
     }
+  });
+
+  it("matches exact prompts and structured response formats", async () => {
+    expect({ merge: MERGE_SYSTEM_PROMPT, system: SYSTEM_PROMPT }).toEqual(await json("prompts-expected.json"));
+    expect({
+      merge: mergeJsonFormat(["provisional-001-001"]),
+      merge_empty: mergeJsonFormat([]),
+      workstream: workstreamJsonFormat(["episode-001"]),
+      workstream_empty: workstreamJsonFormat([]),
+    }).toEqual(await json("formats-expected.json"));
   });
 });

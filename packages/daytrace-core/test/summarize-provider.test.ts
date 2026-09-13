@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { compactSessions } from "../src/episode.js";
+import { SummaryProviderError } from "../src/models.js";
 import type { ProviderRequest, ProviderResponse, SummaryProvider } from "../src/models.js";
 import {
   buildSummaryPlan,
@@ -86,6 +87,13 @@ describe("summary provider orchestration", () => {
     expect(result.kind).toBe("deterministic");
     expect(JSON.stringify(result)).not.toContain("private provider message");
     if (result.kind === "deterministic") expect(result.failure.code).toBe("provider-request");
+  });
+
+  it("preserves typed provider failure categories", async () => {
+    const provider = new RecordingProvider([new SummaryProviderError("authentication")]);
+    const result = await summarizeBundleOrFallback(bundle(), provider);
+    expect(result.kind).toBe("deterministic");
+    if (result.kind === "deterministic") expect(result.failure.code).toBe("provider-authentication");
   });
 
   it("propagates cancellation instead of falling back", async () => {

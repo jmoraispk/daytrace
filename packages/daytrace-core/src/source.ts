@@ -22,7 +22,8 @@ function stringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-function rethrowConnection(error: unknown, code: string, message: string): never {
+function rethrowConnection(error: unknown, code: string, message: string, signal?: AbortSignal): never {
+  if (signal?.aborted) signal.throwIfAborted();
   if (error instanceof DOMException && error.name === "AbortError") throw error;
   throw new ActivityWatchConnectionError(code, message);
 }
@@ -76,7 +77,7 @@ export class ActivityWatchSource {
       }));
       return { version: stringValue(root.version, "unknown"), testing: Boolean(root.testing) };
     } catch (error) {
-      return rethrowConnection(error, "info-request", "ActivityWatch info request failed");
+      return rethrowConnection(error, "info-request", "ActivityWatch info request failed", signal);
     }
   }
 
@@ -99,7 +100,7 @@ export class ActivityWatchSource {
           };
         });
     } catch (error) {
-      return rethrowConnection(error, "bucket-request", "ActivityWatch bucket request failed");
+      return rethrowConnection(error, "bucket-request", "ActivityWatch bucket request failed", signal);
     }
   }
 
@@ -134,7 +135,7 @@ export class ActivityWatchSource {
         };
       });
     } catch (error) {
-      return rethrowConnection(error, "event-request", "ActivityWatch event request failed");
+      return rethrowConnection(error, "event-request", "ActivityWatch event request failed", signal);
     }
   }
 }
