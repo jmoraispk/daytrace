@@ -213,7 +213,7 @@ export interface SummaryPlan {
 }
 
 export interface MergeRequest {
-  readonly schema: "daytrace.merge-request.v1";
+  readonly schema: "daytrace.workstream-merge-request.v1";
   readonly passKind: "merge";
   readonly payload: JsonObject;
   readonly characterCount: number;

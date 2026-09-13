@@ -1,6 +1,7 @@
 export const DAYTRACE_VERSION = "0.4.0";
 
 export * from "./activitywatch.js";
+export * from "./cloud-privacy.js";
 export * from "./diagnostics.js";
 export * from "./episode.js";
 export * from "./fusion.js";
@@ -8,9 +9,11 @@ export * from "./json-output.js";
 export * from "./markdown.js";
 export * from "./models.js";
 export * from "./normalize.js";
+export * from "./prompts.js";
 export * from "./report.js";
 export * from "./sanitize.js";
 export * from "./sessionize.js";
 export * from "./source.js";
+export * from "./summarize.js";
 export * from "./time.js";
 export * from "./transform.js";
