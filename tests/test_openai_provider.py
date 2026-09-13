@@ -54,6 +54,14 @@ def test_openai_provider_requests_strict_json_and_converts_usage(
     assert calls[0]["text"]["format"]["name"] == "daytrace_workstream_digest_v2"
     assert "exactly once" in calls[0]["instructions"]
     assert "unassigned_episode_ids" in calls[0]["instructions"]
+    assert "journal-ready" in calls[0]["instructions"]
+    assert "mixed episode" in calls[0]["instructions"]
+    assert "short but distinct" in calls[0]["instructions"]
+    assert "professional writing" in calls[0]["instructions"]
+    assert "minority evidence" in calls[0]["instructions"]
+    assert "final coverage scan" in calls[0]["instructions"]
+    assert "semantically relevant" in calls[0]["instructions"]
+    assert "named project context" in calls[0]["instructions"]
     assert "runtime-secret" not in repr(result)
     assert "runtime-secret" not in repr(calls)
 

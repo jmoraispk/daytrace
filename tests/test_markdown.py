@@ -9,7 +9,7 @@ from daytrace.markdown import (
     render_markdown,
     render_session_markdown,
 )
-from daytrace.models import SourceKind
+from daytrace.models import SourceKind, WorkstreamDigest
 from daytrace.report import build_report
 from daytrace.time import resolve_day
 
@@ -84,11 +84,11 @@ def test_render_workstream_digest_matches_golden(
         encoding="utf-8"
     )
     assert rendered == expected
-    assert "## PerfLife" in rendered
-    assert "### Apparent achievements" in rendered
-    assert "### Work and topics" in rendered
-    assert "### Activity" in rendered
-    assert "Inferred workstream" in rendered
+    assert "## What this day appears to contain" in rendered
+    assert "| Project / workstream | Apparent achievements | Work and topics |" in rendered
+    assert "| **PerfLife** |" in rendered
+    assert "### Activity" not in rendered
+    assert "episode-001" not in rendered
 
 
 def test_digest_details_include_provider_request_count(
@@ -98,6 +98,22 @@ def test_digest_details_include_provider_request_count(
         make_episode_bundle(), make_digest(), make_provenance(4), details=True
     )
     assert "Provider requests: 4" in rendered
+    assert "## Supporting activity" in rendered
+    assert "### PerfLife" in rendered
+    assert "09:00–09:10" in rendered
+    assert "episode-001" in rendered
+
+
+def test_empty_digest_explains_that_no_workstream_was_inferred(
+    make_episode_bundle, make_provenance
+) -> None:
+    rendered = render_digest_markdown(
+        make_episode_bundle(),
+        WorkstreamDigest((), ("episode-001",)),
+        make_provenance(),
+    )
+
+    assert "No coherent workstreams identified" in rendered
 
 
 def test_empty_report_is_valid_markdown() -> None:

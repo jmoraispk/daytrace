@@ -324,6 +324,41 @@ def test_validates_typed_digest() -> None:
     assert digest.workstreams[0].confidence is Confidence.HIGH
 
 
+def test_mixed_episode_evidence_may_support_another_workstream() -> None:
+    payload = {
+        "schema": "daytrace.workstream-digest.v2",
+        "workstreams": [
+            {
+                "label": "Primary owner",
+                "confidence": "high",
+                "episode_ids": ["episode-001"],
+                "topics": [],
+                "outcomes": [],
+            },
+            {
+                "label": "Interleaved work",
+                "confidence": "medium",
+                "episode_ids": ["episode-002"],
+                "topics": [
+                    {
+                        "text": "Work also visible in a mixed episode",
+                        "evidence": ["episode-001", "episode-002"],
+                    }
+                ],
+                "outcomes": [],
+            },
+        ],
+        "unassigned_episode_ids": [],
+    }
+
+    digest = validate_digest(payload, {"episode-001", "episode-002"})
+
+    assert digest.workstreams[1].topics[0].evidence == (
+        "episode-001",
+        "episode-002",
+    )
+
+
 @pytest.mark.parametrize(
     "mutation",
     [

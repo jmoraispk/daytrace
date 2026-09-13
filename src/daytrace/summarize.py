@@ -31,7 +31,7 @@ from daytrace.sanitize import sanitize_generated_text
 from daytrace.summary_diagnostics import safe_response_shape
 
 
-PROMPT_SCHEMA = "daytrace.workstream-prompt.v2"
+PROMPT_SCHEMA = "daytrace.workstream-prompt.v6"
 REQUEST_SCHEMA = "daytrace.summary-request.v2"
 DIGEST_SCHEMA = "daytrace.workstream-digest.v2"
 MAX_REQUEST_CHARACTERS = 100_000
@@ -304,7 +304,9 @@ def validate_digest(
                 TopicSummary(
                     _bounded_text(topic["text"], f"{topic_field}.text"),
                     _evidence(
-                        topic["evidence"], set(episode_ids), f"{topic_field}.evidence"
+                        topic["evidence"],
+                        allowed_episode_ids,
+                        f"{topic_field}.evidence",
                     ),
                 )
             )
@@ -327,7 +329,9 @@ def validate_digest(
                     "invalid-enum", f"{outcome_field}.strength"
                 ) from None
             evidence = _evidence(
-                outcome["evidence"], set(episode_ids), f"{outcome_field}.evidence"
+                outcome["evidence"],
+                allowed_episode_ids,
+                f"{outcome_field}.evidence",
             )
             if strength is not OutcomeStrength.NONE:
                 outcomes.append(

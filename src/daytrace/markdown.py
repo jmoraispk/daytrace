@@ -306,20 +306,25 @@ def _digest_header(
     ]
 
 
-def _workstream_heading(
-    item: WorkstreamSummary, seconds: float
-) -> list[str]:
-    confidence = {
-        Confidence.HIGH: "High",
-        Confidence.MEDIUM: "Medium",
-        Confidence.LOW: "Low",
-    }[item.confidence]
-    return [
-        "",
-        f"## {_escape(item.label)}",
-        "",
-        f"Inferred workstream · {confidence} confidence · {format_duration(seconds)}",
+def _outcome_cell(item: WorkstreamSummary) -> str:
+    visible = [
+        outcome
+        for outcome in item.outcomes
+        if outcome.strength is not OutcomeStrength.NONE
     ]
+    if not visible:
+        return "No completion should be claimed from this trace alone."
+    values = []
+    for outcome in visible:
+        prefix = "Likely: " if outcome.strength is OutcomeStrength.LIKELY else ""
+        values.append(prefix + _escape(outcome.text))
+    return "<br>".join(values)
+
+
+def _topic_cell(item: WorkstreamSummary) -> str:
+    if not item.topics:
+        return "No specific topics identified."
+    return "<br>".join(_escape(topic.text) for topic in item.topics)
 
 
 def render_digest_markdown(
@@ -334,33 +339,48 @@ def render_digest_markdown(
     lines = _digest_header(bundle, provenance)
     if details:
         lines.append(f"Provider requests: {provenance.request_count}")
+    lines.extend(
+        [
+            "",
+            "## What this day appears to contain",
+            "",
+            "This is a confidence-aware summary inferred from the activity trace. "
+            "Achievements require evidence of a resulting state, not merely an "
+            "open application.",
+            "",
+            "| Project / workstream | Apparent achievements | Work and topics |",
+            "| --- | --- | --- |",
+        ]
+    )
+    for workstream in digest.workstreams:
+        lines.append(
+            f"| **{_escape(workstream.label)}** | {_outcome_cell(workstream)} | "
+            f"{_topic_cell(workstream)} |"
+        )
+    if not digest.workstreams:
+        lines.append("| _No coherent workstreams identified._ | — | — |")
+
+    if not details:
+        return "\n".join(lines) + "\n"
+
+    lines.extend(["", "## Supporting activity", ""])
     for workstream in digest.workstreams:
         episodes = tuple(episode_by_id[item] for item in workstream.episode_ids)
         seconds = sum(item.active_seconds for item in episodes)
-        lines.extend(_workstream_heading(workstream, seconds))
-        lines.extend(["", "### Apparent achievements", ""])
-        visible_outcomes = [
-            item
-            for item in workstream.outcomes
-            if item.strength is not OutcomeStrength.NONE
-        ]
-        if not visible_outcomes:
-            lines.append("No completion should be claimed from this trace alone.")
-        for outcome in visible_outcomes:
-            prefix = "Likely: " if outcome.strength is OutcomeStrength.LIKELY else ""
-            citations = ", ".join(_code(item) for item in outcome.evidence)
-            lines.append(f"- {prefix}{_escape(outcome.text)} ({citations})")
-
-        lines.extend(["", "### Work and topics", ""])
-        if not workstream.topics:
-            lines.append("No specific topics identified.")
-        for topic in workstream.topics:
-            suffix = ""
-            if details:
-                suffix = " (" + ", ".join(_code(item) for item in topic.evidence) + ")"
-            lines.append(f"- {_escape(topic.text)}{suffix}")
-
-        lines.extend(["", "### Activity", ""])
+        confidence = {
+            Confidence.HIGH: "High",
+            Confidence.MEDIUM: "Medium",
+            Confidence.LOW: "Low",
+        }[workstream.confidence]
+        lines.extend(
+            [
+                f"### {_escape(workstream.label)}",
+                "",
+                f"Primary allocation · {confidence} confidence · "
+                f"{format_duration(seconds)}",
+                "",
+            ]
+        )
         for episode in sorted(
             episodes, key=lambda value: (value.start, value.episode_id)
         ):
@@ -368,11 +388,10 @@ def render_digest_markdown(
                 f"- {_episode_times(episode, zone)} — {_code(episode.label)} "
                 f"({format_duration(episode.active_seconds)})"
             )
-            if details:
-                lines.append(f"  - Episode ID: {_code(episode.episode_id)}")
-                lines.append(
-                    f"  - Activity transitions: {len(episode.session_ids)}"
-                )
+            lines.append(f"  - Episode ID: {_code(episode.episode_id)}")
+            lines.append(
+                f"  - Activity transitions: {len(episode.session_ids)}"
+            )
 
     lines.extend(["", "## Unassigned activity", ""])
     if not digest.unassigned_episode_ids:
@@ -384,6 +403,5 @@ def render_digest_markdown(
                 f"- {_episode_times(episode, zone)} — {_code(episode.label)} "
                 f"({format_duration(episode.active_seconds)})"
             )
-            if details:
-                lines.append(f"  - Episode ID: {_code(episode.episode_id)}")
+            lines.append(f"  - Episode ID: {_code(episode.episode_id)}")
     return "\n".join(lines) + "\n"

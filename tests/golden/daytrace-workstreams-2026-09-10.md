@@ -4,23 +4,10 @@ Timezone: `UTC` (inferred at query time)
 Focused activity: 10m
 Summary: AI-assisted workstreams (`openai` / `gpt-test`)
 
-## PerfLife
+## What this day appears to contain
 
-Inferred workstream · High confidence · 10m
+This is a confidence-aware summary inferred from the activity trace. Achievements require evidence of a resulting state, not merely an open application.
 
-### Apparent achievements
-
-- Created the named repository (`episode-001`)
-- Likely: Configured the health dashboard (`episode-001`)
-
-### Work and topics
-
-- Defined a health dashboard
-
-### Activity
-
-- 09:00–09:10 — `jmoraispk/perflife` (10m)
-
-## Unassigned activity
-
-None.
+| Project / workstream | Apparent achievements | Work and topics |
+| --- | --- | --- |
+| **PerfLife** | Created the named repository<br>Likely: Configured the health dashboard | Defined a health dashboard |

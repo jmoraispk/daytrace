@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Sequence
 from datetime import date
@@ -50,12 +51,50 @@ class _ProgressProvider:
         self._summary_index = 0
 
     def _call(self, label: str, method, request):
-        print(f"AI summary: {label} — waiting for OpenAI...", file=sys.stderr)
+        waiting = f"AI summary: {label} — waiting for OpenAI..."
+        live = sys.stderr.isatty()
+        line_start = "\r" if live else ""
+        print(waiting, end="\r" if live else "\n", file=sys.stderr, flush=True)
         started = time.monotonic()
-        response = method(request)
+        stopped = threading.Event()
+
+        def count_elapsed() -> None:
+            while not stopped.wait(1):
+                elapsed = max(0, int(time.monotonic() - started))
+                print(
+                    f"\r{waiting} {elapsed}s",
+                    end="",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+        timer = (
+            threading.Thread(target=count_elapsed, daemon=True) if live else None
+        )
+        if timer is not None:
+            timer.start()
+
+        def stop_timer() -> None:
+            stopped.set()
+            if timer is not None:
+                timer.join()
+
+        try:
+            response = method(request)
+        except BaseException:
+            stop_timer()
+            elapsed = max(0, round(time.monotonic() - started))
+            print(
+                f"{line_start}AI summary: {label} — "
+                f"request ended after {elapsed}s.",
+                file=sys.stderr,
+            )
+            raise
+        stop_timer()
         elapsed = max(0, round(time.monotonic() - started))
         print(
-            f"AI summary: {label} — response received after {elapsed}s; "
+            f"{line_start}AI summary: {label} — "
+            f"response received after {elapsed}s; "
             "validating...",
             file=sys.stderr,
         )
@@ -249,7 +288,7 @@ def _confirm_cloud_send(plan, provider: str, model: str, assume_yes: bool) -> bo
     if assume_yes:
         return True
     try:
-        return input("Continue? [y/N] ").strip().casefold() in {"y", "yes"}
+        return input("Continue? [Y/n] ").strip().casefold() in {"", "y", "yes"}
     except (EOFError, KeyboardInterrupt):
         return False
 

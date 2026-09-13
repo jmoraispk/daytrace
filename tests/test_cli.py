@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -187,6 +189,35 @@ def test_cloud_disclosure_precedes_hidden_key_and_provider_call(
     assert "secret" not in captured.out + captured.err
 
 
+def test_cloud_confirmation_defaults_to_yes_on_enter(
+    monkeypatch, capsys, make_summary_plan
+) -> None:
+    prompts = []
+    monkeypatch.setattr(
+        cli, "input", lambda prompt: prompts.append(prompt) or ""
+    )
+
+    confirmed = cli._confirm_cloud_send(
+        make_summary_plan(), "openai", "model", assume_yes=False
+    )
+
+    assert confirmed is True
+    assert prompts == ["Continue? [Y/n] "]
+    assert "About to send" in capsys.readouterr().err
+
+
+def test_cloud_confirmation_does_not_accept_unrecognized_input(
+    monkeypatch, make_summary_plan
+) -> None:
+    monkeypatch.setattr(cli, "input", lambda prompt: "maybe")
+
+    confirmed = cli._confirm_cloud_send(
+        make_summary_plan(), "openai", "model", assume_yes=False
+    )
+
+    assert confirmed is False
+
+
 def test_progress_provider_reports_waiting_and_received(
     monkeypatch, capsys, make_summary_plan
 ) -> None:
@@ -213,6 +244,60 @@ def test_progress_provider_reports_waiting_and_received(
         "AI summary: merge — waiting for OpenAI...\n"
         "AI summary: merge — response received after 5s; validating...\n"
     )
+
+
+def test_progress_provider_counts_elapsed_seconds_while_waiting(
+    monkeypatch, make_summary_plan
+) -> None:
+    class InteractiveBuffer(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    class SlowProvider:
+        def summarize(self, request):
+            time.sleep(1.1)
+            return object()
+
+        def merge(self, request):
+            raise AssertionError("merge must not be called")
+
+    stream = InteractiveBuffer()
+    monkeypatch.setattr(cli.sys, "stderr", stream)
+    plan = make_summary_plan()
+
+    cli._ProgressProvider(SlowProvider(), summary_chunks=1).summarize(
+        plan.requests[0]
+    )
+
+    progress = stream.getvalue()
+    assert "\rAI summary: chunk 1/1 — waiting for OpenAI... 1s" in progress
+    assert "response received after 1s; validating..." in progress
+
+
+def test_progress_provider_ends_live_line_when_request_fails(
+    monkeypatch, make_summary_plan
+) -> None:
+    class InteractiveBuffer(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    class FailingProvider:
+        def summarize(self, request):
+            raise RuntimeError("provider failed")
+
+        def merge(self, request):
+            raise AssertionError("merge must not be called")
+
+    stream = InteractiveBuffer()
+    monkeypatch.setattr(cli.sys, "stderr", stream)
+    plan = make_summary_plan()
+
+    with pytest.raises(RuntimeError, match="provider failed"):
+        cli._ProgressProvider(FailingProvider(), summary_chunks=1).summarize(
+            plan.requests[0]
+        )
+
+    assert stream.getvalue().endswith("request ended after 0s.\n")
 
 
 @pytest.mark.parametrize(
