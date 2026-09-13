@@ -5,6 +5,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import PurePath, PureWindowsPath
 
 from daytrace.sanitize import sanitize_generated_text
+
+
 DIRECT_MESSAGE = re.compile(r"^.*?\s*\(DM\).*?(Slack|Teams).*$", re.I)
 
 
@@ -28,6 +30,7 @@ def assert_cloud_safe_payload(value: object) -> None:
     if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
         for item in value:
             assert_cloud_safe_payload(item)
+
 
 def minimize_cloud_text(value: str | None) -> str | None:
     if not value:

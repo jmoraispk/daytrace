@@ -12,8 +12,8 @@ from openai import (
     RateLimitError,
 )
 
-from daytrace.models import ProviderFailureKind
 import daytrace.providers.openai as openai_provider
+from daytrace.models import ProviderFailureKind
 from daytrace.providers import OpenAIProvider, SummaryProviderError
 from daytrace.summarize import build_merge_request, build_summary_plan
 

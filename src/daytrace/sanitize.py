@@ -84,15 +84,13 @@ def _safe_text(
     if not value:
         return None
     normalized = unicodedata.normalize("NFKC", value)
-    compact = " ".join(normalized.replace("\r", " ").replace("\n", " ").split())[
-        :500
-    ]
+    compact = " ".join(normalized.replace("\r", " ").replace("\n", " ").split())
     cleaned = replace_url_tokens(compact)
     cleaned = EDGE_SUFFIX.sub("", EMAIL.sub("[redacted-email]", cleaned))
     cleaned = SECRET.sub("[redacted-secret]", cleaned)
     if cleaned != compact:
         diagnose(DiagnosticCode.SANITIZED_FIELD)
-    return cleaned or None
+    return cleaned[:500] or None
 
 
 def sanitize_generated_text(value: str) -> str:

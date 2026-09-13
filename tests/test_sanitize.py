@@ -135,3 +135,12 @@ def test_local_sanitizer_strips_every_url_private_component(
 )
 def test_generated_text_scans_generic_credential_fields(value: str) -> None:
     assert sanitize_generated_text(value) == "[redacted-secret]"
+
+
+def test_local_sanitizer_scans_credentials_before_truncating(make_record) -> None:
+    title = "x" * 489 + " key=abcdefghijklmnop"
+    record = make_record(0, 1, title=title)
+
+    sanitized = sanitize_records((record,), lambda code: None)
+
+    assert "key=abcdef" not in sanitized[0].title

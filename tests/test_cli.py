@@ -412,7 +412,10 @@ def test_validation_failure_writes_private_fallback_and_safe_debug_json(
     assert f"daytrace {__version__}" in captured.err
     assert "code=empty-ids" in captured.err
     assert "field=workstreams[0].episode_ids" in captured.err
-    assert "AI failure metadata will be written locally if this run fails." in captured.err
+    assert (
+        "AI failure metadata will be written locally if this run fails."
+        in captured.err
+    )
     combined = captured.out + captured.err + debug.read_text(encoding="utf-8")
     assert private not in combined
     assert "runtime-secret" not in combined
@@ -430,7 +433,11 @@ def test_debug_output_failure_preserves_existing_file(
         "_openai_summary",
         lambda *a, **k: (_ for _ in ()).throw(SummaryProviderError()),
     )
-    monkeypatch.setattr(cli.os, "replace", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(
+        cli.os,
+        "replace",
+        lambda *a, **k: (_ for _ in ()).throw(OSError()),
+    )
 
     status = cli.main(
         [

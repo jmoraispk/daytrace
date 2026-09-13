@@ -13,13 +13,13 @@ from openai import (
     RateLimitError,
 )
 
+from daytrace.cloud_privacy import assert_cloud_safe_payload
 from daytrace.models import (
     MergeRequest,
     ProviderFailureKind,
     ProviderResponse,
     SummaryRequest,
 )
-from daytrace.cloud_privacy import assert_cloud_safe_payload
 
 
 SYSTEM_PROMPT = """You summarize minimized computer-activity episodes.
