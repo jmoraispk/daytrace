@@ -52,6 +52,8 @@ def test_openai_provider_requests_strict_json_and_converts_usage(
     assert calls[0]["store"] is False
     assert calls[0]["text"]["format"]["type"] == "json_schema"
     assert calls[0]["text"]["format"]["name"] == "daytrace_workstream_digest_v2"
+    assert "exactly once" in calls[0]["instructions"]
+    assert "unassigned_episode_ids" in calls[0]["instructions"]
     assert "runtime-secret" not in repr(result)
     assert "runtime-secret" not in repr(calls)
 

@@ -125,6 +125,115 @@ def test_chunk_merge_copies_outcomes_and_counts_every_request(
     assert provenance.input_tokens == len(plan.requests) * 10 + 7
 
 
+def test_retries_global_episode_allocation_once(make_many_episode_bundle) -> None:
+    bundle = make_many_episode_bundle(2)
+    plan = build_summary_plan(bundle)
+    episode_ids = plan.requests[0].episode_ids
+
+    class Provider:
+        def __init__(self) -> None:
+            self.requests = []
+
+        def summarize(self, request):
+            self.requests.append(request)
+            if len(self.requests) == 1:
+                payload = {
+                    "schema": "daytrace.workstream-digest.v2",
+                    "workstreams": [
+                        {
+                            "label": "First",
+                            "confidence": "high",
+                            "episode_ids": [episode_ids[0]],
+                            "topics": [],
+                            "outcomes": [],
+                        },
+                        {
+                            "label": "Second",
+                            "confidence": "medium",
+                            "episode_ids": [episode_ids[0]],
+                            "topics": [],
+                            "outcomes": [],
+                        },
+                    ],
+                    "unassigned_episode_ids": [episode_ids[1]],
+                }
+            else:
+                assert request.payload["repair_instruction"] == (
+                    "Partition every supplied episode ID exactly once across "
+                    "workstreams[].episode_ids and unassigned_episode_ids."
+                )
+                payload = {
+                    "schema": "daytrace.workstream-digest.v2",
+                    "workstreams": [
+                        {
+                            "label": "Work",
+                            "confidence": "high",
+                            "episode_ids": list(episode_ids),
+                            "topics": [],
+                            "outcomes": [],
+                        }
+                    ],
+                    "unassigned_episode_ids": [],
+                }
+            return ProviderResponse(payload, "test", "fixed", 10, 5)
+
+        def merge(self, request):
+            raise AssertionError("merge must not be called")
+
+    provider = Provider()
+
+    digest, provenance = summarize_bundle(bundle, provider, plan)
+
+    assert len(provider.requests) == 2
+    assert digest.workstreams[0].episode_ids == episode_ids
+    assert provenance.request_count == 2
+    assert provenance.input_tokens == 20
+
+
+def test_allocation_repair_is_attempted_only_once(make_many_episode_bundle) -> None:
+    bundle = make_many_episode_bundle(2)
+    plan = build_summary_plan(bundle)
+    episode_ids = plan.requests[0].episode_ids
+
+    class Provider:
+        def __init__(self) -> None:
+            self.requests = []
+
+        def summarize(self, request):
+            self.requests.append(request)
+            return ProviderResponse(
+                {
+                    "schema": "daytrace.workstream-digest.v2",
+                    "workstreams": [
+                        {
+                            "label": "Overlap",
+                            "confidence": "high",
+                            "episode_ids": [episode_ids[0]],
+                            "topics": [],
+                            "outcomes": [],
+                        }
+                    ],
+                    "unassigned_episode_ids": list(episode_ids),
+                },
+                "test",
+                "fixed",
+            )
+
+        def merge(self, request):
+            raise AssertionError("merge must not be called")
+
+    provider = Provider()
+
+    with pytest.raises(
+        SummaryValidationError, match="invalid-episode-allocation"
+    ):
+        summarize_bundle(bundle, provider, plan)
+
+    assert len(provider.requests) == 2
+    assert "repair_instruction" not in provider.requests[0].payload
+    assert "repair_instruction" in provider.requests[1].payload
+
+
 def test_rejects_individually_oversized_episode(make_many_episode_bundle) -> None:
     with pytest.raises(EpisodeRequestTooLarge):
         build_summary_plan(

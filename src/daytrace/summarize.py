@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
@@ -36,6 +37,10 @@ DIGEST_SCHEMA = "daytrace.workstream-digest.v2"
 MAX_REQUEST_CHARACTERS = 100_000
 TARGET_REQUEST_CHARACTERS = 80_000
 CATEGORY_ORDER = ("anchor", "application", "activity-label", "outcome-signal")
+ALLOCATION_REPAIR_INSTRUCTION = (
+    "Partition every supplied episode ID exactly once across "
+    "workstreams[].episode_ids and unassigned_episode_ids."
+)
 
 
 class SummaryRequestTooLarge(RuntimeError):
@@ -528,6 +533,15 @@ def _contextualized_validation_error(
     )
 
 
+def _allocation_repair_request(request: SummaryRequest) -> SummaryRequest | None:
+    payload = dict(request.payload)
+    payload["repair_instruction"] = ALLOCATION_REPAIR_INSTRUCTION
+    character_count = len(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    if character_count > MAX_REQUEST_CHARACTERS:
+        return None
+    return replace(request, payload=payload, character_count=character_count)
+
+
 def summarize_bundle(
     bundle: EpisodeBundle | SessionBundle,
     provider: SummaryProvider,
@@ -538,7 +552,7 @@ def summarize_bundle(
     chunk_digests: list[WorkstreamDigest] = []
     responses: list[ProviderResponse] = []
     last_request: SummaryRequest | MergeRequest | None = None
-    for call_index, request in enumerate(resolved_plan.requests, start=1):
+    for request in resolved_plan.requests:
         response = provider.summarize(request)
         responses.append(response)
         last_request = request
@@ -547,9 +561,31 @@ def summarize_bundle(
                 validate_digest(response.payload, set(request.episode_ids))
             )
         except SummaryValidationError as exc:
-            raise _contextualized_validation_error(
-                exc, response, request, call_index
-            ) from None
+            repair_request = (
+                _allocation_repair_request(request)
+                if exc.code == "invalid-episode-allocation"
+                else None
+            )
+            if repair_request is None:
+                raise _contextualized_validation_error(
+                    exc, response, request, len(responses)
+                ) from None
+            repair_response = provider.summarize(repair_request)
+            responses.append(repair_response)
+            last_request = repair_request
+            try:
+                chunk_digests.append(
+                    validate_digest(
+                        repair_response.payload, set(repair_request.episode_ids)
+                    )
+                )
+            except SummaryValidationError as repair_exc:
+                raise _contextualized_validation_error(
+                    repair_exc,
+                    repair_response,
+                    repair_request,
+                    len(responses),
+                ) from None
     if len(chunk_digests) == 1:
         digest = chunk_digests[0]
     else:

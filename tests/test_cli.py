@@ -181,8 +181,38 @@ def test_cloud_disclosure_precedes_hidden_key_and_provider_call(
     assert "openai" in captured.err
     assert "437 compact episodes" in captured.err
     assert "3 summary chunks plus 1 merge call" in captured.err
+    assert "one automatic allocation-repair retry" in captured.err
     assert "total initial input" in captured.err
+    assert "AI summary complete; writing output..." in captured.err
     assert "secret" not in captured.out + captured.err
+
+
+def test_progress_provider_reports_waiting_and_received(
+    monkeypatch, capsys, make_summary_plan
+) -> None:
+    response = object()
+
+    class Provider:
+        def summarize(self, request):
+            return response
+
+        def merge(self, request):
+            return response
+
+    clock = iter((10.0, 22.4, 30.0, 35.2))
+    monkeypatch.setattr(cli.time, "monotonic", lambda: next(clock))
+    plan = make_summary_plan(chunk_count=2)
+    provider = cli._ProgressProvider(Provider(), summary_chunks=2)
+
+    assert provider.summarize(plan.requests[0]) is response
+    assert provider.merge(object()) is response
+
+    assert capsys.readouterr().err == (
+        "AI summary: chunk 1/2 — waiting for OpenAI...\n"
+        "AI summary: chunk 1/2 — response received after 12s; validating...\n"
+        "AI summary: merge — waiting for OpenAI...\n"
+        "AI summary: merge — response received after 5s; validating...\n"
+    )
 
 
 @pytest.mark.parametrize(

@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
@@ -40,6 +41,37 @@ from daytrace.summary_diagnostics import (
 
 
 input = builtins.input
+
+
+class _ProgressProvider:
+    def __init__(self, provider: object, summary_chunks: int) -> None:
+        self._provider = provider
+        self._summary_chunks = summary_chunks
+        self._summary_index = 0
+
+    def _call(self, label: str, method, request):
+        print(f"AI summary: {label} — waiting for OpenAI...", file=sys.stderr)
+        started = time.monotonic()
+        response = method(request)
+        elapsed = max(0, round(time.monotonic() - started))
+        print(
+            f"AI summary: {label} — response received after {elapsed}s; "
+            "validating...",
+            file=sys.stderr,
+        )
+        return response
+
+    def summarize(self, request):
+        is_repair = "repair_instruction" in request.payload
+        if not is_repair:
+            self._summary_index += 1
+        label = f"chunk {self._summary_index}/{self._summary_chunks}"
+        if is_repair:
+            label += " repair retry"
+        return self._call(label, self._provider.summarize, request)
+
+    def merge(self, request):
+        return self._call("merge", self._provider.merge, request)
 
 
 def _date(value: str) -> date:
@@ -185,7 +217,10 @@ def _render_diagnostics(bundle, output_format: str) -> str:
 
 
 def _openai_summary(bundle, api_key: str, model: str, plan):
-    return summarize_bundle(bundle, OpenAIProvider(api_key, model), plan)
+    provider = _ProgressProvider(
+        OpenAIProvider(api_key, model), summary_chunks=len(plan.requests)
+    )
+    return summarize_bundle(bundle, provider, plan)
 
 
 def _confirm_cloud_send(plan, provider: str, model: str, assume_yes: bool) -> bool:
@@ -207,6 +242,10 @@ def _confirm_cloud_send(plan, provider: str, model: str, assume_yes: bool) -> bo
     )
     categories = ", ".join(plan.data_categories) or "none"
     print(f"Included categories: {categories}.", file=sys.stderr)
+    print(
+        "At most one automatic allocation-repair retry may be made per chunk.",
+        file=sys.stderr,
+    )
     if assume_yes:
         return True
     try:
@@ -369,6 +408,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("error: OpenAI API key is required", file=sys.stderr)
             return 1
         digest, provenance = _openai_summary(bundle, api_key, args.model, plan)
+        print("AI summary complete; writing output...", file=sys.stderr)
         rendered = (
             render_digest_json(bundle, digest, provenance, details=args.details)
             if args.format == "json"
