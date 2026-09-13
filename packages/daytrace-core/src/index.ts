@@ -15,5 +15,6 @@ export * from "./sanitize.js";
 export * from "./sessionize.js";
 export * from "./source.js";
 export * from "./summarize.js";
+export * from "./summary-diagnostics.js";
 export * from "./time.js";
 export * from "./transform.js";

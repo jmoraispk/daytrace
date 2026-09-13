@@ -1,20 +1,30 @@
-import { minimizeCloudText, minimizeCloudTitle } from "./cloud-privacy.js";
+import { assertCloudSafePayload, minimizeCloudText, minimizeCloudTitle } from "./cloud-privacy.js";
 import { compactSessions } from "./episode.js";
 import type {
   ActivityEpisode,
+  DaytraceFailure,
   EpisodeBundle,
   JsonObject,
   JsonValue,
   MergeGroup,
   MergeRequest,
+  ProgressCallback,
+  ProgressStage,
+  ProviderRequest,
+  ProviderResponse,
   SessionBundle,
   SummaryPlan,
+  SummaryOutcome,
+  SummaryProvider,
+  SummaryProvenance,
   SummaryRequest,
   WorkstreamDigest,
   WorkstreamSummary,
 } from "./models.js";
-import { DaytraceError, SummaryValidationError } from "./models.js";
+import { DaytraceError, SummaryProviderError, SummaryValidationError } from "./models.js";
+import { MERGE_SYSTEM_PROMPT, SYSTEM_PROMPT } from "./prompts.js";
 import { sanitizeGeneratedText } from "./sanitize.js";
+import { safeIdentifier, safeResponseShape } from "./summary-diagnostics.js";
 
 export const PROMPT_SCHEMA = "daytrace.workstream-prompt.v6";
 export const REQUEST_SCHEMA = "daytrace.summary-request.v2";
@@ -411,6 +421,184 @@ export function validateFinalAllocation(digest: WorkstreamDigest, allowed: Reado
   const allocation = [...digest.workstreams.flatMap((item) => item.episodeIds), ...digest.unassignedEpisodeIds];
   if (new Set(allocation).size !== allocation.length || allocation.some((item) => !allowed.has(item)) || allowed.size !== new Set(allocation).size) {
     fail("invalid-episode-allocation", "episode-allocation");
+  }
+}
+
+export interface SummarizeOptions {
+  readonly signal?: AbortSignal;
+  readonly onProgress?: ProgressCallback;
+}
+
+function contextualizedError(
+  error: SummaryValidationError,
+  response: ProviderResponse,
+  request: SummaryRequest | MergeRequest,
+  callIndex: number,
+): SummaryValidationError {
+  const itemIds = request.passKind === "chunk" ? request.episodeIds : request.provisionalIds;
+  return new SummaryValidationError(error.code, error.field, {
+    context: {
+      provider: safeIdentifier(response.provider, "[redacted-provider]"),
+      model: safeIdentifier(response.model, "[redacted-model]"),
+      stage: request.passKind,
+      callIndex,
+      requestCharacterCount: request.characterCount,
+      itemIds,
+      ...(response.responseId === undefined ? {} : { responseId: safeIdentifier(response.responseId, "[redacted-response]") }),
+      ...(response.requestId === undefined ? {} : { requestId: safeIdentifier(response.requestId, "[redacted-request]") }),
+    },
+    responseShape: safeResponseShape(response.payload, new Set(itemIds)),
+  });
+}
+
+function allocationRepairRequest(request: SummaryRequest): SummaryRequest | undefined {
+  const payload: JsonObject = { ...request.payload, repair_instruction: ALLOCATION_REPAIR_INSTRUCTION };
+  const count = characterCount(payload);
+  return count > MAX_REQUEST_CHARACTERS ? undefined : { ...request, payload, characterCount: count };
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  signal?.throwIfAborted();
+}
+
+async function providerCall(
+  provider: SummaryProvider,
+  request: SummaryRequest | MergeRequest,
+  options: SummarizeOptions,
+): Promise<ProviderResponse> {
+  throwIfAborted(options.signal);
+  assertCloudSafePayload(request.payload);
+  const providerRequest: ProviderRequest = {
+    passKind: request.passKind,
+    payload: request.payload,
+    instructions: request.passKind === "chunk" ? SYSTEM_PROMPT : MERGE_SYSTEM_PROMPT,
+    responseFormat: request.passKind === "chunk"
+      ? workstreamJsonFormat(request.episodeIds)
+      : mergeJsonFormat(request.provisionalIds),
+  };
+  try {
+    const response = await provider.complete(providerRequest, options.signal === undefined ? {} : { signal: options.signal });
+    throwIfAborted(options.signal);
+    return response;
+  } catch (error) {
+    if (options.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+    if (error instanceof SummaryProviderError) throw error;
+    throw new SummaryProviderError("request");
+  }
+}
+
+function sumKnown(values: readonly (number | undefined)[]): number | undefined {
+  const known = values.filter((value): value is number => value !== undefined);
+  return known.length === 0 ? undefined : known.reduce((total, value) => total + value, 0);
+}
+
+export async function summarizeBundle(
+  bundle: EpisodeBundle | SessionBundle,
+  provider: SummaryProvider,
+  plan?: SummaryPlan,
+  options: SummarizeOptions = {},
+): Promise<{ readonly digest: WorkstreamDigest; readonly provenance: SummaryProvenance }> {
+  const startedAt = performance.now();
+  const emit = (stage: ProgressStage, current?: number, total?: number): void => options.onProgress?.({
+    stage,
+    elapsedSeconds: Math.max(0, Math.floor((performance.now() - startedAt) / 1000)),
+    ...(current === undefined ? {} : { current }),
+    ...(total === undefined ? {} : { total }),
+  });
+  throwIfAborted(options.signal);
+  const resolvedBundle = episodeBundle(bundle);
+  const resolvedPlan = plan ?? buildSummaryPlan(resolvedBundle);
+  const chunks: WorkstreamDigest[] = [];
+  const responses: ProviderResponse[] = [];
+  let lastRequest: SummaryRequest | MergeRequest | undefined;
+  for (const [index, request] of resolvedPlan.requests.entries()) {
+    emit("summary:chunk", index + 1, resolvedPlan.requests.length);
+    const response = await providerCall(provider, request, options);
+    responses.push(response);
+    lastRequest = request;
+    emit("summary:response", responses.length, resolvedPlan.plannedRequestCount);
+    try {
+      chunks.push(validateDigest(response.payload, new Set(request.episodeIds)));
+      emit("summary:validate", index + 1, resolvedPlan.requests.length);
+    } catch (error) {
+      if (!(error instanceof SummaryValidationError)) throw error;
+      const repair = error.code === "invalid-episode-allocation" ? allocationRepairRequest(request) : undefined;
+      if (repair === undefined) throw contextualizedError(error, response, request, responses.length);
+      emit("summary:repair", index + 1, resolvedPlan.requests.length);
+      const repairResponse = await providerCall(provider, repair, options);
+      responses.push(repairResponse);
+      lastRequest = repair;
+      emit("summary:response", responses.length, resolvedPlan.plannedRequestCount + 1);
+      try {
+        chunks.push(validateDigest(repairResponse.payload, new Set(repair.episodeIds)));
+        emit("summary:validate", index + 1, resolvedPlan.requests.length);
+      } catch (repairError) {
+        if (!(repairError instanceof SummaryValidationError)) throw repairError;
+        throw contextualizedError(repairError, repairResponse, repair, responses.length);
+      }
+    }
+  }
+  let digest: WorkstreamDigest;
+  if (chunks.length === 1) digest = chunks[0]!;
+  else {
+    const { request, provisional } = buildMergeRequest(chunks);
+    emit("summary:merge", 1, 1);
+    const response = await providerCall(provider, request, options);
+    responses.push(response);
+    lastRequest = request;
+    emit("summary:response", responses.length, resolvedPlan.plannedRequestCount);
+    try {
+      digest = assembleMergedDigest(validateMerge(response.payload, new Set(request.provisionalIds)), provisional, chunks);
+      emit("summary:validate", 1, 1);
+    } catch (error) {
+      if (!(error instanceof SummaryValidationError)) throw error;
+      throw contextualizedError(error, response, request, responses.length);
+    }
+  }
+  try {
+    validateFinalAllocation(digest, new Set(resolvedBundle.episodes.map((item) => item.episodeId)));
+  } catch (error) {
+    if (!(error instanceof SummaryValidationError) || responses.length === 0 || lastRequest === undefined) throw error;
+    throw contextualizedError(error, responses.at(-1)!, lastRequest, responses.length);
+  }
+  assertCloudSafePayload(digest);
+  const first = responses[0];
+  if (first === undefined) throw new SummaryProviderError("request");
+  const provenance: SummaryProvenance = {
+    provider: first.provider,
+    model: first.model,
+    promptSchema: PROMPT_SCHEMA,
+    ...(sumKnown(responses.map((item) => item.inputTokens)) === undefined ? {} : { inputTokens: sumKnown(responses.map((item) => item.inputTokens))! }),
+    ...(sumKnown(responses.map((item) => item.outputTokens)) === undefined ? {} : { outputTokens: sumKnown(responses.map((item) => item.outputTokens))! }),
+    requestCount: responses.length,
+  };
+  emit("complete");
+  return { digest, provenance };
+}
+
+function failureFrom(error: unknown): DaytraceFailure {
+  if (error instanceof SummaryValidationError) return {
+    code: error.code,
+    field: error.field,
+    ...(error.context === undefined ? {} : { context: error.context }),
+    ...(error.responseShape === undefined ? {} : { responseShape: error.responseShape }),
+  };
+  if (error instanceof DaytraceError) return { code: error.code };
+  return { code: "provider-request" };
+}
+
+export async function summarizeBundleOrFallback(
+  bundle: EpisodeBundle | SessionBundle,
+  provider: SummaryProvider,
+  plan?: SummaryPlan,
+  options: SummarizeOptions = {},
+): Promise<SummaryOutcome> {
+  try {
+    const result = await summarizeBundle(bundle, provider, plan, options);
+    return { kind: "ai", ...result };
+  } catch (error) {
+    if (options.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+    return { kind: "deterministic", bundle: episodeBundle(bundle), failure: failureFrom(error) };
   }
 }
 
