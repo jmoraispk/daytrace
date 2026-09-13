@@ -2,33 +2,14 @@ from __future__ import annotations
 
 import re
 from pathlib import PurePath, PureWindowsPath
-from urllib.parse import urlsplit
 
 from daytrace.sanitize import sanitize_generated_text
-
-
-URL_TOKEN = re.compile(
-    r"(?:https?://)?(?:[a-z0-9-]+\.)+[a-z]{2,}"
-    r"(?:/[^\s?#]*)?(?:\?[^\s#]*)?(?:#[^\s]*)?",
-    re.I,
-)
 DIRECT_MESSAGE = re.compile(r"^.*?\s*\(DM\).*?(Slack|Teams).*$", re.I)
-
-
-def _host_only(match: re.Match[str]) -> str:
-    try:
-        raw = match.group(0)
-        parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
-        return (parsed.hostname or "[redacted-url]").casefold()
-    except ValueError:
-        return "[redacted-url]"
-
 
 def minimize_cloud_text(value: str | None) -> str | None:
     if not value:
         return None
-    replaced = URL_TOKEN.sub(_host_only, value)
-    cleaned = sanitize_generated_text(replaced)
+    cleaned = sanitize_generated_text(value)
     return cleaned[:500] or None
 
 

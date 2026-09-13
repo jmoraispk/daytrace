@@ -19,8 +19,9 @@ EDGE_SUFFIX = re.compile(
 )
 SECRET = re.compile(
     r"(?i)(bearer\s+[A-Za-z0-9._~-]+|"
-    r"(?:api[_-]?key|code[_-]?challenge|session[_-]?state|"
-    r"password[_-]?reset|token|code|state)\s*[=:]\s*[A-Za-z0-9._~-]{12,})"
+    r"\b(?:api[_-]?key|access[_-]?(?:key|token)|code[_-]?challenge|"
+    r"session[_-]?state|password[_-]?reset|token|secret|key|code|state)"
+    r"\s*[=:]\s*[A-Za-z0-9._~-]{12,})"
 )
 AUTH_HOST_PARTS = ("login.", "auth.", "accounts.")
 AUTH_PATH_PARTS = (
@@ -32,10 +33,26 @@ AUTH_PATH_PARTS = (
     "recover",
     "reset",
 )
-WHOLE_URL = re.compile(
-    r"(?i)^(?:https?://)?(?:[a-z0-9-]+\.)+[a-z]{2,}"
-    r"(?:/[^\s?#]*)?(?:\?[^\s#]*)?(?:#[^\s]*)?$"
+URL_HOST = (
+    r"(?:localhost|\[[0-9a-f:]+\]|(?:\d{1,3}\.){3}\d{1,3}|"
+    r"(?:[a-z0-9-]+\.)+[a-z]{2,})"
 )
+URL_TOKEN = re.compile(
+    rf"(?i)(?<![\w@])(?:https?://)?(?:[^\s/@]+:[^\s/@]+@)?"
+    rf"{URL_HOST}(?::\d{{1,5}})?(?:/[^\s]*)?"
+)
+
+
+def _url_host(raw: str) -> str:
+    candidate = raw if "://" in raw else f"https://{raw}"
+    try:
+        return (urlsplit(candidate).hostname or "[redacted-url]").casefold()
+    except ValueError:
+        return "[redacted-url]"
+
+
+def replace_url_tokens(value: str) -> str:
+    return URL_TOKEN.sub(lambda match: _url_host(match.group(0)), value)
 
 
 def _safe_path(host: str | None, path: str | None) -> str | None:
@@ -70,18 +87,8 @@ def _safe_text(
     compact = " ".join(normalized.replace("\r", " ").replace("\n", " ").split())[
         :500
     ]
-    if WHOLE_URL.fullmatch(compact) and (
-        compact.startswith(("http://", "https://"))
-        or any(marker in compact for marker in ("/", "?", "#"))
-    ):
-        try:
-            parsed = urlsplit(compact if "://" in compact else f"https://{compact}")
-            host = parsed.hostname
-        except ValueError:
-            host = None
-        diagnose(DiagnosticCode.SANITIZED_FIELD)
-        return host.casefold() if host else "[redacted-url]"
-    cleaned = EDGE_SUFFIX.sub("", EMAIL.sub("[redacted-email]", compact))
+    cleaned = replace_url_tokens(compact)
+    cleaned = EDGE_SUFFIX.sub("", EMAIL.sub("[redacted-email]", cleaned))
     cleaned = SECRET.sub("[redacted-secret]", cleaned)
     if cleaned != compact:
         diagnose(DiagnosticCode.SANITIZED_FIELD)
@@ -91,7 +98,8 @@ def _safe_text(
 def sanitize_generated_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value)
     compact = " ".join(normalized.replace("\r", " ").replace("\n", " ").split())
-    return SECRET.sub("[redacted-secret]", EMAIL.sub("[redacted-email]", compact))
+    cleaned = replace_url_tokens(compact)
+    return SECRET.sub("[redacted-secret]", EMAIL.sub("[redacted-email]", cleaned))
 
 
 def _safe_path_text(

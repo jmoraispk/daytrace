@@ -98,3 +98,40 @@ def test_local_sanitizer_removes_query_from_scheme_less_url_title(make_record) -
     sanitized = sanitize_records((record,), lambda code: None)
 
     assert sanitized[0].title == "git.example"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("http://127.0.0.1:8765/setup?key=" + "a" * 40, "127.0.0.1"),
+        ("10.20.30.40:63590/?token=" + "b" * 40, "10.20.30.40"),
+        ("http://localhost:5173/path?state=" + "c" * 40, "localhost"),
+        (
+            "http://[2001:db8::1]:8080/path?secret=" + "d" * 40,
+            "2001:db8::1",
+        ),
+        ("Open http://127.0.0.1:9000/?key=" + "e" * 40, "Open 127.0.0.1"),
+    ],
+)
+def test_local_sanitizer_strips_every_url_private_component(
+    title, expected, make_record
+) -> None:
+    record = make_record(0, 1, title=title)
+
+    sanitized = sanitize_records((record,), lambda code: None)
+
+    assert sanitized[0].title == expected
+    assert "?" not in sanitized[0].title
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "key=" + "a" * 40,
+        "secret=" + "b" * 40,
+        "access_token=" + "c" * 40,
+        "access-key=" + "d" * 40,
+    ),
+)
+def test_generated_text_scans_generic_credential_fields(value: str) -> None:
+    assert sanitize_generated_text(value) == "[redacted-secret]"

@@ -59,7 +59,7 @@
   `minimize_cloud_text`, `minimize_cloud_title`, and `sanitize_records`
   behavior with stronger URL coverage.
 
-- [ ] **Step 1: Add failing local URL sanitization cases**
+- [x] **Step 1: Add failing local URL sanitization cases**
 
 Add parameterized tests using synthetic values only:
 
@@ -86,7 +86,7 @@ def test_local_sanitizer_strips_every_url_private_component(
 Also extend credential tests with `key=`, `secret=`, `access_token=`, and
 `access-key=` followed by 40 synthetic characters.
 
-- [ ] **Step 2: Add failing cloud minimization cases**
+- [x] **Step 2: Add failing cloud minimization cases**
 
 ```python
 @pytest.mark.parametrize(
@@ -101,7 +101,7 @@ def test_cloud_text_structurally_removes_url_private_parts(value, expected) -> N
     assert minimize_cloud_text(value) == expected
 ```
 
-- [ ] **Step 3: Run the focused tests and verify failure**
+- [x] **Step 3: Run the focused tests and verify failure**
 
 Run:
 
@@ -111,7 +111,7 @@ uv run pytest tests/test_sanitize.py tests/test_cloud_privacy.py tests/test_priv
 
 Expected: IPv4/localhost/IPv6 and generic-key cases fail because the current URL regular expressions require a dotted DNS hostname and the current secret expression does not recognize generic `key`.
 
-- [ ] **Step 4: Centralize URL recognition in `sanitize.py`**
+- [x] **Step 4: Centralize URL recognition in `sanitize.py`**
 
 Replace the separate whole-URL assumptions with one URL-token pattern and safe host parser. The implementation must use named helpers so local and cloud policies cannot drift:
 
@@ -143,7 +143,7 @@ and `sanitize_generated_text`. Expand `SECRET` to recognize
 `key`, `secret`, `access_token`, and `access-key`, while retaining the existing
 minimum opaque-value length to avoid redacting ordinary prose.
 
-- [ ] **Step 5: Reuse the shared sanitizer in `cloud_privacy.py`**
+- [x] **Step 5: Reuse the shared sanitizer in `cloud_privacy.py`**
 
 Delete its independent `URL_TOKEN` and `_host_only`. Implement:
 
@@ -157,7 +157,7 @@ def minimize_cloud_text(value: str | None) -> str | None:
 
 Keep the communication-title and basename policies unchanged.
 
-- [ ] **Step 6: Run focused and full privacy tests**
+- [x] **Step 6: Run focused and full privacy tests**
 
 Run:
 
@@ -168,7 +168,7 @@ uv run pytest -q
 
 Expected: all URL variants become host-only, synthetic secret values are absent from representations, and the full suite passes.
 
-- [ ] **Step 7: Commit the sanitizer boundary**
+- [x] **Step 7: Commit the sanitizer boundary**
 
 ```bash
 git add src/daytrace/sanitize.py src/daytrace/cloud_privacy.py tests/test_sanitize.py tests/test_cloud_privacy.py tests/test_privacy.py
