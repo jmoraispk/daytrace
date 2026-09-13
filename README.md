@@ -43,7 +43,7 @@ After the package is published, the equivalent one-off workflows are:
 uvx daytrace@latest activitywatch --date 2026-09-10 --output daytrace.md
 
 # AI-assisted inferred workstreams; key entered in a hidden prompt
-uvx --refresh --link-mode=copy daytrace@0.3.3 activitywatch `
+uvx --refresh --link-mode=copy daytrace@0.3.4 activitywatch `
   --date 2026-09-10 `
   --summary ai `
   --provider openai `
@@ -66,21 +66,27 @@ shown as `<1m`.
 AI mode is a separate second stage. Before any cloud request, DayTrace reports
 the number of compact episodes, planned summary chunks and merge call, total
 initial request size, included data categories, provider, and model, then asks
-for confirmation. Most compact days use one call; unusually large days are
+for confirmation. The prompt is `Continue? [Y/n]`, so Enter accepts and an
+explicit `n` or `no` declines. Most compact days use one call; unusually large days are
 partitioned at episode boundaries and receive one constrained merge call. Only
 after consent does DayTrace request the OpenAI API key through a hidden prompt.
 The key is held in memory only. Never put a key in command-line arguments or
 paste it into support logs. OpenAI Responses API calls set `store=False`.
 
 After the key prompt, DayTrace prints content-free progress to stderr for each
-summary chunk, response, validation stage, and merge. If a response assigns an
+summary chunk, response, validation stage, and merge. In an interactive terminal,
+the waiting message updates once per second with elapsed time. If a response assigns an
 episode to multiple workstreams or otherwise fails the global allocation rule,
 DayTrace may make one disclosed repair retry for that chunk before falling back.
 
-The model returns structured data that DayTrace validates locally. Each topic
-and visible achievement must cite a supplied episode, every episode must be
-allocated exactly once, and model-produced text receives another secret scan.
-Durations always come from the deterministic local trace. If an explicitly
+The default AI Markdown is a compact journal table organized by inferred
+project/workstream, apparent achievements, and work/topics. `--details` adds the
+primary episode allocation and activity timeline for auditing. The model returns
+structured data that DayTrace validates locally. Each topic and visible achievement
+must cite a supplied episode. Because an episode can contain interleaved work, its
+evidence may support multiple workstreams, while each episode still has exactly one
+primary allocation for coverage. Model-produced text receives another secret scan.
+Durations always come from that deterministic primary allocation. If an explicitly
 requested AI call or response fails, DayTrace writes the deterministic fallback
 and exits with status 2. With `--debug-output`, it also writes a versioned JSON
 support artifact containing only allow-listed structural metadata: failure
@@ -104,7 +110,7 @@ To capture the sanitized raw sessions needed to improve DayTrace's episode
 compression in a later release:
 
 ```powershell
-uvx --refresh --link-mode=copy daytrace@0.3.3 activitywatch `
+uvx --refresh --link-mode=copy daytrace@0.3.4 activitywatch `
   --date 2026-09-10 `
   --format json `
   --raw `
