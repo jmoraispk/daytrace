@@ -64,7 +64,7 @@ After the package is published, the equivalent one-off workflows are:
 uvx daytrace@latest activitywatch --date 2026-09-10 --output daytrace.md
 
 # AI-assisted inferred workstreams; key entered in a hidden prompt
-uvx --refresh --link-mode=copy daytrace@0.3.5 activitywatch `
+uvx --refresh --link-mode=copy daytrace@0.3.6 activitywatch `
   --date 2026-09-10 `
   --summary ai `
   --provider openai `
@@ -145,7 +145,7 @@ To capture the sanitized raw sessions needed to improve DayTrace's episode
 compression in a later release:
 
 ```powershell
-uvx --refresh --link-mode=copy daytrace@0.3.5 activitywatch `
+uvx --refresh --link-mode=copy daytrace@0.3.6 activitywatch `
   --date 2026-09-10 `
   --format json `
   --raw `

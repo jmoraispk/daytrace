@@ -14,8 +14,14 @@ from openai import (
 
 import daytrace.providers.openai as openai_provider
 from daytrace.models import ProviderFailureKind
+from daytrace.prompts import MERGE_SYSTEM_PROMPT, SYSTEM_PROMPT
 from daytrace.providers import OpenAIProvider, SummaryProviderError
 from daytrace.summarize import build_merge_request, build_summary_plan
+
+
+def test_openai_provider_uses_prompts_from_prompt_module() -> None:
+    assert openai_provider.SYSTEM_PROMPT is SYSTEM_PROMPT
+    assert openai_provider.MERGE_SYSTEM_PROMPT is MERGE_SYSTEM_PROMPT
 
 
 def test_openai_provider_requests_strict_json_and_converts_usage(
