@@ -17,6 +17,7 @@ from daytrace.summarize import (
     MergeRequestTooLarge,
     build_summary_plan,
     build_merge_request,
+    assemble_merged_digest,
     validate_merge,
     build_summary_request,
     summarize_bundle,
@@ -37,7 +38,7 @@ def test_large_plan_partitions_only_at_episode_boundaries(
     ] == [item.episode_id for item in bundle.episodes]
 
 
-def test_merge_validation_requires_every_provisional_id_once() -> None:
+def test_merge_validation_rejects_duplicate_provisional_ids() -> None:
     payload = {
         "schema": "daytrace.workstream-merge.v1",
         "groups": [
@@ -54,6 +55,58 @@ def test_merge_validation_requires_every_provisional_id_once() -> None:
     payload["groups"][0]["provisional_ids"].append("provisional-001-001")
     with pytest.raises(SummaryValidationError):
         validate_merge(payload, {"provisional-001-001"})
+
+
+def test_merge_preserves_ten_ungrouped_workstreams_from_fourteen() -> None:
+    provisional = {
+        f"provisional-{index:03d}": WorkstreamSummary(
+            label=f"Workstream {index}",
+            confidence=Confidence.MEDIUM,
+            episode_ids=(f"episode-{index:03d}",),
+            topics=(),
+            outcomes=(),
+        )
+        for index in range(1, 15)
+    }
+    payload = {
+        "schema": "daytrace.workstream-merge.v1",
+        "groups": [
+            {
+                "label": "Merged 1 and 14",
+                "confidence": "high",
+                "provisional_ids": ["provisional-001", "provisional-014"],
+            },
+            {
+                "label": "Merged 3 and 4",
+                "confidence": "medium",
+                "provisional_ids": ["provisional-003", "provisional-004"],
+            },
+        ],
+    }
+
+    groups = validate_merge(payload, set(provisional))
+    digest = assemble_merged_digest(groups, provisional, ())
+
+    assert len(digest.workstreams) == 12
+    allocated = {
+        episode_id
+        for stream in digest.workstreams
+        for episode_id in stream.episode_ids
+    }
+    assert allocated == {
+        f"episode-{index:03d}" for index in range(1, 15)
+    }
+    assert {stream.label for stream in digest.workstreams} >= {
+        "Merged 1 and 14",
+        "Merged 3 and 4",
+        "Workstream 2",
+        "Workstream 13",
+    }
+    assert [stream.label for stream in digest.workstreams[:3]] == [
+        "Merged 1 and 14",
+        "Workstream 2",
+        "Merged 3 and 4",
+    ]
 
 
 def test_chunk_merge_copies_outcomes_and_counts_every_request(
@@ -547,7 +600,19 @@ def test_merge_validation_failure_has_safe_request_context(
 
         def merge(self, request):
             return ProviderResponse(
-                {"schema": "daytrace.workstream-merge.v1", "groups": []},
+                {
+                    "schema": "daytrace.workstream-merge.v1",
+                    "groups": [
+                        {
+                            "label": "Duplicate allocation",
+                            "confidence": "medium",
+                            "provisional_ids": [
+                                request.provisional_ids[0],
+                                request.provisional_ids[0],
+                            ],
+                        }
+                    ],
+                },
                 "openai",
                 "fixed",
                 response_id="resp_merge",

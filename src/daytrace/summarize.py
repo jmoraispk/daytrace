@@ -444,7 +444,7 @@ def validate_merge(
                 provisional_ids=provisional_ids,
             )
         )
-    if len(allocated) != len(set(allocated)) or set(allocated) != allowed:
+    if len(allocated) != len(set(allocated)):
         raise SummaryValidationError(
             "invalid-provisional-allocation", "provisional-allocation"
         )
@@ -456,10 +456,10 @@ def assemble_merged_digest(
     provisional: Mapping[str, WorkstreamSummary],
     chunks: tuple[WorkstreamDigest, ...],
 ) -> WorkstreamDigest:
-    workstreams: list[WorkstreamSummary] = []
+    merged_workstreams: list[WorkstreamSummary] = []
     for group in groups:
         selected = tuple(provisional[item] for item in group.provisional_ids)
-        workstreams.append(
+        merged_workstreams.append(
             WorkstreamSummary(
                 label=group.label,
                 confidence=group.confidence,
@@ -478,6 +478,20 @@ def assemble_merged_digest(
                 ),
             )
         )
+    group_index_by_id = {
+        provisional_id: group_index
+        for group_index, group in enumerate(groups)
+        for provisional_id in group.provisional_ids
+    }
+    workstreams: list[WorkstreamSummary] = []
+    emitted_groups: set[int] = set()
+    for provisional_id, workstream in provisional.items():
+        group_index = group_index_by_id.get(provisional_id)
+        if group_index is None:
+            workstreams.append(workstream)
+        elif group_index not in emitted_groups:
+            workstreams.append(merged_workstreams[group_index])
+            emitted_groups.add(group_index)
     unassigned = tuple(
         dict.fromkeys(
             episode_id

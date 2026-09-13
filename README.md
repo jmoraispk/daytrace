@@ -36,6 +36,27 @@ uv sync
 uv run daytrace activitywatch --date 2026-09-10 --output daytrace.md
 ```
 
+For a persistent user-level installation, install once and run `daytrace`
+directly. `uv` keeps this tool environment until it is upgraded or uninstalled:
+
+```powershell
+uv tool install daytrace@latest
+uv tool update-shell
+# Open a new PowerShell window, then:
+daytrace activitywatch --date 2026-09-10 --output daytrace.md
+```
+
+To keep the installation inside a specific directory instead:
+
+```powershell
+mkdir C:\Tools\daytrace
+cd C:\Tools\daytrace
+uv venv
+uv pip install daytrace
+.\.venv\Scripts\daytrace.exe activitywatch --date 2026-09-10 `
+  --output daytrace.md
+```
+
 After the package is published, the equivalent one-off workflows are:
 
 ```powershell
@@ -43,7 +64,7 @@ After the package is published, the equivalent one-off workflows are:
 uvx daytrace@latest activitywatch --date 2026-09-10 --output daytrace.md
 
 # AI-assisted inferred workstreams; key entered in a hidden prompt
-uvx --refresh --link-mode=copy daytrace@0.3.4 activitywatch `
+uvx --refresh --link-mode=copy daytrace@0.3.5 activitywatch `
   --date 2026-09-10 `
   --summary ai `
   --provider openai `
@@ -65,19 +86,33 @@ shown as `<1m`.
 
 AI mode is a separate second stage. Before any cloud request, DayTrace reports
 the number of compact episodes, planned summary chunks and merge call, total
-initial request size, included data categories, provider, and model, then asks
-for confirmation. The prompt is `Continue? [Y/n]`, so Enter accepts and an
-explicit `n` or `no` declines. Most compact days use one call; unusually large days are
-partitioned at episode boundaries and receive one constrained merge call. Only
-after consent does DayTrace request the OpenAI API key through a hidden prompt.
-The key is held in memory only. Never put a key in command-line arguments or
-paste it into support logs. OpenAI Responses API calls set `store=False`.
+initial request size, included data categories, provider, model, and a rough
+standard-rate cost estimate, then asks for confirmation. The prompt is
+`Continue? [Y/n]`, so Enter accepts and an explicit `n` or `no` declines. Most
+compact days use one call; unusually large days are partitioned at episode
+boundaries and receive one constrained merge call. The merge names only actual
+cross-chunk combinations; DayTrace preserves every omitted singleton locally.
+Only after consent does DayTrace request the OpenAI API key through a hidden
+prompt. The key is held in memory only. Never put a key in command-line
+arguments or paste it into support logs. OpenAI Responses API calls set
+`store=False`.
+
+The preflight estimate uses request size and an explicit expected-output
+allowance; retries are excluded. After a successful response, DayTrace prints a
+second estimate from provider-reported usage, priced as an uncached
+standard-rate upper bound. The built-in table covers `gpt-5.6-luna`,
+`gpt-5.6-terra`, `gpt-5.6-sol`/`gpt-5.6`, and `gpt-6-astra`, using the official
+OpenAI prices published at
+<https://developers.openai.com/api/docs/models/compare> and dated 2026-09-13.
+Unknown models are reported as unavailable instead of being guessed.
 
 After the key prompt, DayTrace prints content-free progress to stderr for each
 summary chunk, response, validation stage, and merge. In an interactive terminal,
 the waiting message updates once per second with elapsed time. If a response assigns an
 episode to multiple workstreams or otherwise fails the global allocation rule,
 DayTrace may make one disclosed repair retry for that chunk before falling back.
+After the requested output has been written successfully, the final stderr line
+is `Done!`.
 
 The default AI Markdown is a compact journal table organized by inferred
 project/workstream, apparent achievements, and work/topics. `--details` adds the
@@ -110,7 +145,7 @@ To capture the sanitized raw sessions needed to improve DayTrace's episode
 compression in a later release:
 
 ```powershell
-uvx --refresh --link-mode=copy daytrace@0.3.4 activitywatch `
+uvx --refresh --link-mode=copy daytrace@0.3.5 activitywatch `
   --date 2026-09-10 `
   --format json `
   --raw `

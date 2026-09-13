@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -35,7 +36,7 @@ def test_module_help_is_available() -> None:
 
 
 def test_cli_writes_utf8_lf_output_file(
-    monkeypatch, tmp_path: Path, make_bundle
+    monkeypatch, capsys, tmp_path: Path, make_bundle
 ) -> None:
     monkeypatch.setattr(cli, "collect_day", lambda *args, **kwargs: make_bundle())
     output = tmp_path / "summary.md"
@@ -47,6 +48,7 @@ def test_cli_writes_utf8_lf_output_file(
     assert status == 0
     assert output.read_bytes().startswith("# DayTrace — 2026-09-10\n".encode())
     assert b"\r" not in output.read_bytes()
+    assert capsys.readouterr().err == "Done!\n"
 
 
 def test_cli_keeps_operational_error_out_of_stdout(monkeypatch, capsys) -> None:
@@ -187,6 +189,54 @@ def test_cloud_disclosure_precedes_hidden_key_and_provider_call(
     assert "total initial input" in captured.err
     assert "AI summary complete; writing output..." in captured.err
     assert "secret" not in captured.out + captured.err
+
+
+def test_ai_prints_preflight_and_reported_usage_costs(
+    monkeypatch,
+    capsys,
+    make_episode_bundle,
+    make_summary_plan,
+    make_digest,
+    make_provenance,
+) -> None:
+    plan = replace(
+        make_summary_plan(episode_count=10), input_character_count=10_000
+    )
+    provenance = replace(
+        make_provenance(),
+        model="gpt-5.6-terra",
+        input_tokens=100_000,
+        output_tokens=10_000,
+    )
+    monkeypatch.setattr(cli, "collect_day", lambda *a, **k: make_episode_bundle())
+    monkeypatch.setattr(cli, "build_summary_plan", lambda bundle: plan)
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: "secret")
+    monkeypatch.setattr(
+        cli,
+        "_openai_summary",
+        lambda bundle, key, model, resolved_plan: (make_digest(), provenance),
+    )
+
+    status = cli.main(
+        [
+            "activitywatch",
+            "--date",
+            "2026-09-10",
+            "--summary",
+            "ai",
+            "--provider",
+            "openai",
+            "--model",
+            "gpt-5.6-terra",
+            "--yes",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert status == 0
+    assert "Estimated OpenAI cost: about $0.0142" in captured.err
+    assert "Estimated OpenAI cost from reported usage: $0.3200" in captured.err
+    assert captured.err.endswith("Done!\n")
 
 
 def test_cloud_confirmation_defaults_to_yes_on_enter(
@@ -388,6 +438,7 @@ def test_ai_failure_writes_deterministic_fallback_and_returns_two(
     assert status == 2
     assert "Summary: Deterministic activity episodes" in captured.out
     assert "AI summary unavailable" in captured.err
+    assert captured.err.endswith("Done!\n")
 
 
 def test_raw_and_details_are_mutually_exclusive() -> None:
@@ -422,7 +473,7 @@ def test_json_format_produces_json_only_stdout(
     captured = capsys.readouterr()
     assert status == 0
     assert json.loads(captured.out)["schema"] == "daytrace.episode-bundle.v1"
-    assert captured.err == ""
+    assert captured.err == "Done!\n"
 
 
 def test_debug_output_requires_ai_mode(tmp_path: Path) -> None:

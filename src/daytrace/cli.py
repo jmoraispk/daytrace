@@ -23,6 +23,12 @@ from daytrace.episode import compact_sessions
 from daytrace.json_output import render_digest_json, render_episode_json
 from daytrace.markdown import render_digest_markdown, render_episode_markdown
 from daytrace.models import ProviderFailureKind
+from daytrace.pricing import (
+    PRICING_AS_OF,
+    CostEstimate,
+    estimate_plan_cost,
+    estimate_usage_cost,
+)
 from daytrace.providers import OpenAIProvider, SummaryProviderError
 from daytrace.source import ActivityWatchConnectionError
 from daytrace.summarize import (
@@ -214,6 +220,48 @@ def _emit(text: str, output: Path | None) -> bool:
     return True
 
 
+def _emit_done(text: str, output: Path | None) -> bool:
+    if not _emit(text, output):
+        return False
+    print("Done!", file=sys.stderr)
+    return True
+
+
+def _formatted_cost(estimate: CostEstimate) -> str:
+    return f"${estimate.usd:.4f}"
+
+
+def _print_preflight_cost(plan, model: str) -> None:
+    estimate = estimate_plan_cost(model, plan)
+    if estimate is None:
+        print(
+            f"Estimated OpenAI cost: unavailable for model {model}.",
+            file=sys.stderr,
+        )
+        return
+    print(
+        f"Estimated OpenAI cost: about {_formatted_cost(estimate)} "
+        f"(pricing snapshot {PRICING_AS_OF.isoformat()}; retries excluded).",
+        file=sys.stderr,
+    )
+
+
+def _print_reported_cost(provenance) -> None:
+    if provenance.input_tokens is None or provenance.output_tokens is None:
+        return
+    estimate = estimate_usage_cost(
+        provenance.model, provenance.input_tokens, provenance.output_tokens
+    )
+    if estimate is None:
+        return
+    print(
+        "Estimated OpenAI cost from reported usage: "
+        f"{_formatted_cost(estimate)} (standard-rate upper bound; "
+        "cached-input discounts not applied).",
+        file=sys.stderr,
+    )
+
+
 def _render_deterministic(bundle, args: argparse.Namespace) -> str:
     if not hasattr(bundle, "episodes"):
         bundle = compact_sessions(bundle)
@@ -279,6 +327,7 @@ def _confirm_cloud_send(plan, provider: str, model: str, assume_yes: bool) -> bo
         "characters total initial input.",
         file=sys.stderr,
     )
+    _print_preflight_cost(plan, model)
     categories = ", ".join(plan.data_categories) or "none"
     print(f"Included categories: {categories}.", file=sys.stderr)
     print(
@@ -422,10 +471,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         bundle = compact_sessions(bundle)
 
     if args.diagnostics:
-        return 0 if _emit(_render_diagnostics(bundle, args.format), args.output) else 1
+        return (
+            0
+            if _emit_done(_render_diagnostics(bundle, args.format), args.output)
+            else 1
+        )
 
     if args.summary == "deterministic":
-        return 0 if _emit(_render_deterministic(bundle, args), args.output) else 1
+        return 0 if _emit_done(_render_deterministic(bundle, args), args.output) else 1
 
     deterministic_fallback = _render_deterministic(bundle, args)
     try:
@@ -447,6 +500,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("error: OpenAI API key is required", file=sys.stderr)
             return 1
         digest, provenance = _openai_summary(bundle, api_key, args.model, plan)
+        _print_reported_cost(provenance)
         print("AI summary complete; writing output...", file=sys.stderr)
         rendered = (
             render_digest_json(bundle, digest, provenance, details=args.details)
@@ -468,9 +522,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.debug_output
             else True
         )
-        return 2 if fallback_written and debug_written else 1
+        if fallback_written and debug_written:
+            print("Done!", file=sys.stderr)
+            return 2
+        return 1
 
-    return 0 if _emit(rendered, args.output) else 1
+    return 0 if _emit_done(rendered, args.output) else 1
 
 
 def entrypoint() -> NoReturn:
