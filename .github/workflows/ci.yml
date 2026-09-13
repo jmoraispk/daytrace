@@ -24,3 +24,23 @@ jobs:
       - run: uv sync --frozen --all-groups
       - run: uv run pytest -v
       - run: uv build --no-sources
+
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: packages/daytrace-core/package-lock.json
+      - run: npm ci
+        working-directory: packages/daytrace-core
+      - run: npm test
+        working-directory: packages/daytrace-core
+      - run: npm run typecheck
+        working-directory: packages/daytrace-core
+      - run: npm run build
+        working-directory: packages/daytrace-core
+      - run: npm run smoke:browser
+        working-directory: packages/daytrace-core
