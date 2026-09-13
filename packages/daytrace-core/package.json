@@ -1,0 +1,49 @@
+{
+  "name": "daytrace",
+  "version": "0.4.0",
+  "description": "Privacy-first ActivityWatch normalization and journal summaries for browsers and Electron",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "pack:check": "npm pack --dry-run",
+    "smoke:browser": "node scripts/browser-smoke.mjs"
+  },
+  "keywords": [
+    "activitywatch",
+    "journaling",
+    "productivity",
+    "browser",
+    "electron"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jmoraispk/daytrace.git",
+    "directory": "packages/daytrace-core"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.4",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}
