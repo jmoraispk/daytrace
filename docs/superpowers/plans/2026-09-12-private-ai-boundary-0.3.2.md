@@ -772,7 +772,7 @@ git add README.md pyproject.toml src/daytrace/__init__.py uv.lock
 git commit -m "release: prepare 0.3.2"
 ```
 
-- [ ] **Step 5: Perform pre-publication review and verification gates**
+- [x] **Step 5: Perform pre-publication review and verification gates**
 
 Use `superpowers:requesting-code-review` and address all correctness, privacy,
 and compatibility findings. Then use `superpowers:verification-before-completion`
