@@ -44,18 +44,31 @@ export class MergeRequestTooLarge extends SummaryRequestTooLarge {
   constructor() { super("merge-request-too-large"); }
 }
 
-function pythonJson(value: unknown): string {
+function pythonJson(value: unknown, key?: string): string {
   if (value === null) return "null";
   if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "null";
-  if (Array.isArray(value)) return `[${value.map(pythonJson).join(", ")}]`;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "null";
+    return Number.isInteger(value) && (key === "active_seconds" || key === "focused_seconds")
+      ? `${value}.0`
+      : String(value);
+  }
+  if (Array.isArray(value)) return `[${value.map((item) => pythonJson(item)).join(", ")}]`;
   if (typeof value === "object") {
     return `{${Object.entries(value as Record<string, unknown>)
       .filter(([, item]) => item !== undefined)
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}: ${pythonJson(item)}`).join(", ")}}`;
+      .map(([itemKey, item]) => `${JSON.stringify(itemKey)}: ${pythonJson(item, itemKey)}`).join(", ")}}`;
   }
   throw new TypeError("unsupported JSON value");
+}
+
+function pythonIsoTimestamp(value: string): string {
+  const date = new Date(value);
+  const iso = date.toISOString();
+  return date.getUTCMilliseconds() === 0
+    ? `${iso.slice(0, 19)}+00:00`
+    : `${iso.slice(0, 23)}000+00:00`;
 }
 
 function characterCount(value: unknown): number {
@@ -88,8 +101,8 @@ function episodePayload(episode: ActivityEpisode, categories: Set<string>): Json
   ] as const) if (values.length > 0) categories.add(category);
   return {
     id: episode.episodeId,
-    start: episode.start,
-    end: episode.end,
+    start: pythonIsoTimestamp(episode.start),
+    end: pythonIsoTimestamp(episode.end),
     active_seconds: episode.activeSeconds,
     ...(episode.focusedSeconds === undefined ? {} : { focused_seconds: episode.focusedSeconds }),
     label: minimizeCloudTitle(undefined, episode.label) ?? null,

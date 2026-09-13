@@ -1,0 +1,26 @@
+{
+  "day": "2026-09-10",
+  "timezone": "UTC",
+  "buckets": [
+    { "id": "window", "type": "currentwindow", "client": "example", "hostname": "example-host" },
+    { "id": "browser", "type": "web.tab.current", "client": "example", "hostname": "example-host" },
+    { "id": "editor", "type": "app.editor.activity", "client": "example", "hostname": "example-host" },
+    { "id": "afk", "type": "afkstatus", "client": "example", "hostname": "example-host" },
+    { "id": "ignored", "type": "example.unsupported", "client": "example", "hostname": "example-host" }
+  ],
+  "events": {
+    "window": [
+      { "id": "w0", "timestamp": "2026-09-10T09:00:00+00:00", "duration": 0, "data": { "app": "Example Editor" } },
+      { "id": "w1", "timestamp": "2026-09-10T09:00:00+00:00", "duration": 600, "data": { "app": "Example Editor", "title": "Demo token=abcdefghijkl" } }
+    ],
+    "browser": [
+      { "id": "b1", "timestamp": "2026-09-10T09:00:00+00:00", "duration": 600, "data": { "url": "https://github.com/octo/demo-project?token=fake", "title": "octo/demo-project" } }
+    ],
+    "editor": [
+      { "id": "e1", "timestamp": "2026-09-10T09:01:00+00:00", "duration": 300, "data": { "project": "/fictional/work/demo-project", "file": "/fictional/work/demo-project/main.ts", "language": "TypeScript" } }
+    ],
+    "afk": [
+      { "id": "a1", "timestamp": "2026-09-10T09:05:00+00:00", "duration": 60, "data": { "status": "afk" } }
+    ]
+  }
+}

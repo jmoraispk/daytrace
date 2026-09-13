@@ -1,0 +1,27 @@
+{
+  "payload": {
+    "schema": "daytrace.workstream-digest.v2",
+    "workstreams": [
+      {
+        "label": "Demo project",
+        "confidence": "high",
+        "episode_ids": ["episode-001"],
+        "topics": [
+          { "text": "Implemented browser-compatible TypeScript support", "evidence": ["episode-001"] }
+        ],
+        "outcomes": [
+          { "text": "A visible demo ran", "strength": "observed", "evidence": ["episode-001"] }
+        ]
+      }
+    ],
+    "unassigned_episode_ids": []
+  },
+  "provenance": {
+    "provider": "example",
+    "model": "example-model",
+    "prompt_schema": "daytrace.workstream-prompt.v6",
+    "input_tokens": 100,
+    "output_tokens": 20,
+    "request_count": 1
+  }
+}
