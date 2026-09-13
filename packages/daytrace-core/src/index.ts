@@ -1,5 +1,6 @@
 export const DAYTRACE_VERSION = "0.4.0";
 
+export * from "./activitywatch.js";
 export * from "./diagnostics.js";
 export * from "./episode.js";
 export * from "./fusion.js";
