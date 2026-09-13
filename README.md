@@ -1,207 +1,288 @@
-# Daytrace
+# DayTrace
 
-Daytrace is a privacy-first desktop utility that turns a person's day into a
-searchable text journal. Screen, microphone, keyboard activity, and system
-context are independent opt-ins. Captured media is processed ephemerally and
-discarded; the durable record contains text and structured metadata only.
+DayTrace turns ActivityWatch history into a compact, privacy-aware account of
+what a day appears to contain: coherent activity episodes, inferred
+projects/workstreams, broad topics, and evidence-backed achievements.
 
-This repository now includes a headless ActivityWatch summary prototype. The
-broader cross-platform capture application remains in the product and
-architecture planning phase.
+It is available in two forms from the same repository:
 
-## ActivityWatch workstream digest
+| Package | Install | Best for |
+| --- | --- | --- |
+| Python `daytrace` | `uv tool install daytrace@latest` | A ready-to-run ActivityWatch CLI |
+| npm `daytrace` | `npm install daytrace` | Browser/Electron and Obsidian integrations |
 
-The Python CLI reads a selected day from an already-running ActivityWatch
-instance, sanitizes and fuses its watcher data, and reconstructs project-neutral
-activity sessions, then compacts them into project-neutral activity episodes.
-It can stop there with a fully local deterministic report, or—only when
-explicitly requested—send minimized episodes to OpenAI to
-infer broad workstreams, topics, and evidence-backed apparent achievements.
+Both implementations preserve the same versioned schemas and core semantics.
+Python remains the reference implementation; synthetic parity fixtures keep the
+TypeScript port aligned.
 
-DayTrace's inferred workstreams are not canonical project definitions. They are
-a useful daily handoff that an Obsidian Second Brain plugin can later map to the
-projects defined in the vault. This keeps DayTrace useful without access to the
-vault and leaves durable project ownership in Obsidian.
+## From raw activity to a useful journal
 
-Prerequisites: install and run ActivityWatch, then install `uv`. On Windows:
+DayTrace does not need project definitions to sanitize, fuse, sessionize, and
+compact a day. Its deterministic stages first turn overlapping ActivityWatch
+watchers into project-neutral episodes:
+
+```text
+ActivityWatch → normalize → remove AFK → sanitize → fuse overlaps
+              → sessions → compact episodes → deterministic output
+                                      ↘ optional AI workstream summary
+```
+
+In AI mode, the model groups those minimized episodes into inferred daily
+workstreams and reports work/topics separately from apparent achievements. An
+achievement is shown only when the trace contains evidence of a resulting
+state—not merely because an application was open.
+
+These workstreams are deliberately not canonical project definitions. An
+Obsidian Second Brain plugin can map the validated daily digest onto the project
+definitions stored in the vault. DayTrace therefore remains useful without
+vault access, while Obsidian remains the source of truth for project identity.
+
+## Privacy boundary
+
+DayTrace processes locally unless AI mode is explicitly selected. Before a
+cloud request it:
+
+- removes AFK time and overlapping-duration inflation;
+- normalizes and sanitizes titles, URLs, paths, email addresses, and secrets;
+- sends compact episodes rather than raw ActivityWatch events;
+- discloses the planned calls, input size, data categories, and estimated cost;
+- asks for confirmation (`Continue? [Y/n]`);
+- validates response structure, evidence, and complete episode allocation;
+- secret-scans generated text before returning it.
+
+The durable output contains text and structured metadata only. DayTrace does
+not retain screenshots, audio, video, query strings, raw browser URLs, source
+bucket IDs, source event IDs, or a duplicate ActivityWatch database.
+
+## Python CLI
+
+Install [uv](https://docs.astral.sh/uv/) and make sure ActivityWatch is running.
+On Windows:
 
 ```powershell
 winget install --id=astral-sh.uv -e
-```
-
-From a source checkout:
-
-```powershell
-uv sync
-uv run daytrace activitywatch --date 2026-09-10 --output daytrace.md
-```
-
-For a persistent user-level installation, install once and run `daytrace`
-directly. `uv` keeps this tool environment until it is upgraded or uninstalled:
-
-```powershell
 uv tool install daytrace@latest
 uv tool update-shell
-# Open a new PowerShell window, then:
+```
+
+Open a new PowerShell window, then create a fully local report:
+
+```powershell
 daytrace activitywatch --date 2026-09-10 --output daytrace.md
 ```
 
-To keep the installation inside a specific directory instead:
+For an AI-assisted workstream digest:
 
 ```powershell
-mkdir C:\Tools\daytrace
-cd C:\Tools\daytrace
-uv venv
-uv pip install daytrace
-.\.venv\Scripts\daytrace.exe activitywatch --date 2026-09-10 `
-  --output daytrace.md
-```
-
-After the package is published, the equivalent one-off workflows are:
-
-```powershell
-# Project-neutral compact episodes; no model or key
-uvx daytrace@latest activitywatch --date 2026-09-10 --output daytrace.md
-
-# AI-assisted inferred workstreams; key entered in a hidden prompt
-uvx --refresh --link-mode=copy daytrace@0.3.6 activitywatch `
+daytrace activitywatch `
   --date 2026-09-10 `
   --summary ai `
   --provider openai `
   --model gpt-5.6-terra `
   --debug-output daytrace-ai-failure.json `
   --output daytrace.md
-
-# Structured handoff for the future Second Brain plugin
-uvx daytrace@latest activitywatch --date 2026-09-10 --summary ai `
-  --provider openai --model YOUR_MODEL --format json --output daytrace.json
 ```
 
-The deterministic mode needs no API key. It emits compact episodes with exact
-active duration while using current-window events as the foreground-time
-authority; simultaneous browser and editor events enrich those episodes rather
-than double-counting time. Repeated assistant, terminal, new-tab, and file-manager
-transitions are aggregated around compatible work anchors. Short activity is
-shown as `<1m`.
+The CLI asks for the OpenAI API key in a hidden prompt after you approve the
+disclosed request. The key is held in memory only. Do not put it in command-line
+arguments or paste it into logs. OpenAI requests use `store=False`.
 
-AI mode is a separate second stage. Before any cloud request, DayTrace reports
-the number of compact episodes, planned summary chunks and merge call, total
-initial request size, included data categories, provider, model, and a rough
-standard-rate cost estimate, then asks for confirmation. The prompt is
-`Continue? [Y/n]`, so Enter accepts and an explicit `n` or `no` declines. Most
-compact days use one call; unusually large days are partitioned at episode
-boundaries and receive one constrained merge call. The merge names only actual
-cross-chunk combinations; DayTrace preserves every omitted singleton locally.
-Only after consent does DayTrace request the OpenAI API key through a hidden
-prompt. The key is held in memory only. Never put a key in command-line
-arguments or paste it into support logs. OpenAI Responses API calls set
-`store=False`.
-
-The preflight estimate uses request size and an explicit expected-output
-allowance; retries are excluded. After a successful response, DayTrace prints a
-second estimate from provider-reported usage, priced as an uncached
-standard-rate upper bound. The built-in table covers `gpt-5.6-luna`,
-`gpt-5.6-terra`, `gpt-5.6-sol`/`gpt-5.6`, and `gpt-6-astra`, using the official
-OpenAI prices published at
-<https://developers.openai.com/api/docs/models/compare> and dated 2026-09-13.
-Unknown models are reported as unavailable instead of being guessed.
-
-After the key prompt, DayTrace prints content-free progress to stderr for each
-summary chunk, response, validation stage, and merge. In an interactive terminal,
-the waiting message updates once per second with elapsed time. If a response assigns an
-episode to multiple workstreams or otherwise fails the global allocation rule,
-DayTrace may make one disclosed repair retry for that chunk before falling back.
-After the requested output has been written successfully, the final stderr line
-is `Done!`.
-
-The default AI Markdown is a compact journal table organized by inferred
-project/workstream, apparent achievements, and work/topics. `--details` adds the
-primary episode allocation and activity timeline for auditing. The model returns
-structured data that DayTrace validates locally. Each topic and visible achievement
-must cite a supplied episode. Because an episode can contain interleaved work, its
-evidence may support multiple workstreams, while each episode still has exactly one
-primary allocation for coverage. Model-produced text receives another secret scan.
-Durations always come from that deterministic primary allocation. If an explicitly
-requested AI call or response fails, DayTrace writes the deterministic fallback
-and exits with status 2. With `--debug-output`, it also writes a versioned JSON
-support artifact containing only allow-listed structural metadata: failure
-codes, response shape counts, supplied episode IDs, and safe opaque provider
-identifiers. It never includes model-generated prose, ActivityWatch titles,
-request bodies, response bodies, or the API key. Review this artifact before
-sharing it, as you would any diagnostic file.
-
-Useful local modes:
-
-- `--details` adds sanitized episode membership and evidence identifiers.
-- `--raw` appends the fine-grained sanitized session/slice audit trail and cannot be combined with
-  `--details` or AI mode.
-- `--diagnostics` prints only aggregate, content-free counts and coverage.
-- `--format json` emits a versioned structured artifact suitable for another
-  plugin; Markdown is the default.
-- `--yes` confirms the disclosed cloud send for non-interactive AI automation,
-  but the API key is still collected separately through the hidden prompt.
-
-To capture the sanitized raw sessions needed to improve DayTrace's episode
-compression in a later release:
+For a one-off run without persistent installation:
 
 ```powershell
-uvx --refresh --link-mode=copy daytrace@0.3.6 activitywatch `
-  --date 2026-09-10 `
-  --format json `
-  --raw `
-  --output daytrace-raw.json
+uvx --refresh --link-mode=copy daytrace@latest activitywatch `
+  --date 2026-09-10 --output daytrace.md
 ```
 
-Raw output has passed DayTrace's sanitizer, but it still describes personal
-activity and can contain sensitive context. Review it before sharing.
+To install into a specific directory instead:
 
-If Windows reports that uv cannot hardlink across cache and target filesystems,
-use `uvx --link-mode=copy daytrace@latest ...`; this affects installation speed,
-not DayTrace output or correctness.
+```powershell
+mkdir C:\Tools\daytrace
+cd C:\Tools\daytrace
+uv venv
+uv pip install daytrace
+.\.venv\Scripts\daytrace.exe activitywatch --date 2026-09-10 --output daytrace.md
+```
 
-Python callers—including a future second-brain integration—can use the same
-project-neutral collection and deterministic renderer directly:
+Useful CLI options:
+
+- `--format json` writes a versioned structured handoff.
+- `--details` adds sanitized episode allocation and evidence IDs.
+- `--raw` adds the fine-grained sanitized audit trail; review it before sharing.
+- `--diagnostics` emits aggregate, content-free coverage counts only.
+- `--yes` confirms the disclosed cloud send for non-interactive workflows; key
+  collection remains separate.
+- `--timezone America/Los_Angeles` selects an explicit IANA timezone.
+- `--server http://127.0.0.1:5600` overrides the default ActivityWatch server.
+
+Interactive AI calls print content-free progress and an elapsed-seconds timer.
+DayTrace allows one disclosed allocation-repair retry, then uses deterministic
+fallback on failure. With `--debug-output`, the support artifact contains only
+allow-listed structure and opaque identifiers—never prompt/response prose or
+the API key. A successful output write ends with `Done!`.
+
+The cost estimate uses the small, dated pricing table in the Python package.
+Unknown models are reported as unavailable rather than guessed.
+
+Python callers can use the same project-neutral core directly:
 
 ```python
 from datetime import date
 
-from daytrace.activitywatch import collect_day, summarize_day
+from daytrace.activitywatch import collect_day
+from daytrace.markdown import render_episode_markdown
 
-bundle = collect_day(date(2026, 9, 10))
-markdown = summarize_day(date(2026, 9, 10))
+bundle = collect_day(date(2026, 9, 10), timezone_name="Europe/Lisbon")
+markdown = render_episode_markdown(bundle)
 ```
 
-Daytrace reads ActivityWatch through `http://127.0.0.1:5600` by default. It
-does not retain images, audio, video, raw browser URLs, query strings, source
-event IDs, source bucket IDs, or a second copy of ActivityWatch events. Use
-`--server` for another ActivityWatch endpoint and `--timezone` for an explicit
-IANA timezone such as `America/Los_Angeles`.
+## TypeScript core
 
-DayTrace deliberately does not read the Obsidian vault or decide canonical
-project names. Its workstream digest is designed as the handoff to the Second
-Brain plugin, which can map the evidence-based daily workstreams onto project
-definitions stored in Obsidian.
+Install the browser-compatible ESM package:
 
-## Product decisions
+```bash
+npm install daytrace
+```
 
-- Local-first: the database and processing stay on the user's computer unless
-  the user explicitly configures a cloud provider or export destination.
-- All capture sources start off and require separate, informed consent.
-- Tauri 2 and Rust are the recommended desktop stack, with a small React/Vite
-  interface that normally stays hidden behind a tray icon.
-- Accessibility text is preferred over screenshots. OCR is a fallback, and
-  image buffers are destroyed after extraction.
-- Microphone audio is held only in bounded memory, segmented with voice
-  activity detection, transcribed, and discarded.
-- Keyboard capture defaults to activity signals only, not key content. An
-  advanced typed-text mode is a later, separately consented feature with
-  password and deny-list suppression.
-- SQLite, B-tree time dimensions, and FTS5 provide the hierarchical timeline
-  and full-text search. Captured media and vector embeddings are not stored.
-- The first release supports BYOK and local providers. A hosted inference
-  gateway can later fund the project without locking users into the service.
+The package has zero runtime dependencies and no Node built-in imports. It is
+designed for browser and Electron renderer environments, including an Obsidian
+plugin. HTTP, credentials, persistence, UI, and scheduling remain host-owned.
 
-## Plan
+```ts
+import {
+  collectDay,
+  renderDigestMarkdown,
+  renderEpisodeMarkdown,
+  summarizeBundleOrFallback,
+  type ActivityWatchTransport,
+  type SummaryProvider,
+} from "daytrace";
+
+const activityWatchTransport: ActivityWatchTransport = {
+  async request({ server, path, query, signal }) {
+    const url = new URL(path, `${server}/`);
+    for (const [key, value] of Object.entries(query ?? {})) {
+      url.searchParams.set(key, value);
+    }
+    const response = await fetch(url, { signal });
+    if (!response.ok) throw new Error("ActivityWatch request failed");
+    return response.json();
+  },
+};
+
+// The host adapter can reuse the API key already managed by your plugin.
+declare const aiProvider: SummaryProvider;
+declare const controller: AbortController;
+declare function updateStatus(stage: string, elapsedSeconds: number): void;
+
+const bundle = await collectDay({
+  day: "2026-09-10",
+  timezoneName: "Europe/Lisbon",
+  server: "http://127.0.0.1:5600",
+  transport: activityWatchTransport,
+  signal: controller.signal,
+  onProgress: ({ stage, elapsedSeconds }) => updateStatus(stage, elapsedSeconds),
+});
+
+const result = await summarizeBundleOrFallback(bundle, aiProvider, undefined, {
+  signal: controller.signal,
+  onProgress: ({ stage, elapsedSeconds }) => updateStatus(stage, elapsedSeconds),
+});
+
+const markdown = result.kind === "ai"
+  ? renderDigestMarkdown(bundle, result.digest, result.provenance)
+  : renderEpisodeMarkdown(result.bundle);
+```
+
+The two injected boundaries are intentionally small:
+
+```ts
+interface ActivityWatchTransport {
+  request(input: {
+    server: string;
+    path: string;
+    query?: Readonly<Record<string, string>>;
+    signal?: AbortSignal;
+  }): Promise<unknown>;
+}
+
+interface SummaryProvider {
+  complete(
+    request: {
+      passKind: "chunk" | "merge";
+      payload: Readonly<Record<string, unknown>>;
+      instructions: string;
+      responseFormat: Readonly<Record<string, unknown>>;
+    },
+    options?: { signal?: AbortSignal },
+  ): Promise<{
+    payload: unknown;
+    provider: string;
+    model: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    responseId?: string;
+    requestId?: string;
+  }>;
+}
+```
+
+Core public operations include:
+
+| API | Purpose |
+| --- | --- |
+| `collectDay(options)` | Query through an injected transport and produce an episode bundle |
+| `buildSummaryPlan(bundle)` | Inspect minimized requests before any AI call |
+| `summarizeBundle(bundle, provider, plan?, options?)` | Return only a validated AI digest or throw a typed safe error |
+| `summarizeBundleOrFallback(...)` | Return a discriminated AI/deterministic result |
+| `renderEpisodeJson/Markdown(...)` | Render deterministic `episode-bundle.v1` output |
+| `renderDigestJson/Markdown(...)` | Render AI-assisted `workstream-report.v2` output |
+| `renderSummaryFailureJson(failure)` | Render a content-free `ai-failure.v1` artifact |
+| `DAYTRACE_VERSION` | Package/core version |
+
+The package also exports the reusable deterministic stages (`normalizeEvents`,
+`removeAfk`, `sanitizeRecords`, `fuseObservations`, `sessionize`, and
+`compactSessions`), strict validators, domain types, and the inspectable summary
+prompts. See the [npm package guide](packages/daytrace-core/README.md) for the
+complete integration contract.
+
+## Schemas and fallback
+
+The stable serialized contracts are:
+
+- `daytrace.episode-bundle.v1`
+- `daytrace.workstream-report.v2`
+- `daytrace.summary-request.v2`
+- `daytrace.workstream-digest.v2`
+- `daytrace.workstream-merge-request.v1`
+- `daytrace.workstream-merge.v1`
+- `daytrace.ai-failure.v1`
+
+Every AI topic and visible outcome cites supplied episode IDs. An episode can be
+evidence for multiple narrative claims, but it has exactly one primary
+allocation across workstreams or the unassigned list. Durations always come
+from that deterministic primary allocation.
+
+## Development
+
+```bash
+# Python
+uv sync --all-groups
+uv run pytest
+uv build --no-sources
+
+# TypeScript
+npm --prefix packages/daytrace-core ci
+npm --prefix packages/daytrace-core test
+npm --prefix packages/daytrace-core run typecheck
+npm --prefix packages/daytrace-core run build
+npm --prefix packages/daytrace-core run smoke:browser
+```
+
+The parity adapter writes only invented fixture data under
+`tests/fixtures/cross-language/`. Never commit personal ActivityWatch exports.
+
+## Product and architecture notes
 
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
 - [Architecture](docs/ARCHITECTURE.md)
@@ -210,29 +291,8 @@ definitions stored in Obsidian.
 - [Product and UX specification](docs/PRODUCT_UX.md)
 - [Screenpipe reuse audit](docs/SCREENPIPE_REUSE.md)
 - [ActivityWatch integration research](docs/ACTIVITYWATCH_INTEGRATION_RESEARCH.md)
+- [TypeScript core design](docs/superpowers/specs/2026-09-13-typescript-core-design.md)
 
-## Proposed repository shape
+## License
 
-```text
-apps/
-  desktop/                 Tauri window, tray, onboarding, settings
-crates/
-  daytrace-core/           orchestration, policies, domain events
-  daytrace-capture/        platform-neutral capture traits
-  daytrace-platform-*/     macOS, Windows, and Linux adapters
-  daytrace-extract/        accessibility, OCR, VAD, transcription
-  daytrace-store/          SQLite migrations, FTS, retention
-  daytrace-summary/        segmentation and provider-neutral summaries
-  daytrace-sync/           deterministic export and GitHub sync
-  daytrace-secrets/        OS credential-store abstraction
-extensions/
-  browser/                 optional Chromium/Firefox tab metadata bridge
-docs/
-```
-
-## Target outcome
-
-The v1 release is a signed, auto-updating macOS, Windows, and Linux desktop app
-that can run for an eight-hour day without retaining raw media, recover cleanly
-from sleep and device changes, search a local journal, and create an editable
-end-of-day summary. See the implementation plan for measurable release gates.
+MIT
