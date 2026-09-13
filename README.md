@@ -43,7 +43,7 @@ After the package is published, the equivalent one-off workflows are:
 uvx daytrace@latest activitywatch --date 2026-09-10 --output daytrace.md
 
 # AI-assisted inferred workstreams; key entered in a hidden prompt
-uvx --refresh --link-mode=copy daytrace@0.3.2 activitywatch `
+uvx --refresh --link-mode=copy daytrace@0.3.3 activitywatch `
   --date 2026-09-10 `
   --summary ai `
   --provider openai `
@@ -72,6 +72,11 @@ after consent does DayTrace request the OpenAI API key through a hidden prompt.
 The key is held in memory only. Never put a key in command-line arguments or
 paste it into support logs. OpenAI Responses API calls set `store=False`.
 
+After the key prompt, DayTrace prints content-free progress to stderr for each
+summary chunk, response, validation stage, and merge. If a response assigns an
+episode to multiple workstreams or otherwise fails the global allocation rule,
+DayTrace may make one disclosed repair retry for that chunk before falling back.
+
 The model returns structured data that DayTrace validates locally. Each topic
 and visible achievement must cite a supplied episode, every episode must be
 allocated exactly once, and model-produced text receives another secret scan.
@@ -99,7 +104,7 @@ To capture the sanitized raw sessions needed to improve DayTrace's episode
 compression in a later release:
 
 ```powershell
-uvx --refresh --link-mode=copy daytrace@0.3.2 activitywatch `
+uvx --refresh --link-mode=copy daytrace@0.3.3 activitywatch `
   --date 2026-09-10 `
   --format json `
   --raw `
