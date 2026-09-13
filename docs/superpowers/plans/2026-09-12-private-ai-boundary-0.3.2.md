@@ -323,7 +323,7 @@ git commit -m "fix: prevent persisted or unsafe AI requests"
 - Consumes: `SummaryRequest.episode_ids` and `MergeRequest.provisional_ids`.
 - Produces: `workstream_json_format(episode_ids: tuple[str, ...]) -> dict[str, object]` and `merge_json_format(provisional_ids: tuple[str, ...]) -> dict[str, object]`.
 
-- [ ] **Step 1: Add failing schema tests**
+- [x] **Step 1: Add failing schema tests**
 
 ```python
 def test_summary_schema_restricts_nonempty_ids_to_request(make_episode_bundle) -> None:
@@ -346,14 +346,14 @@ def test_merge_schema_restricts_nonempty_ids_to_request(make_digest) -> None:
 Also assert the recording client receives the generated format rather than a
 module-level mutable schema.
 
-- [ ] **Step 2: Run the provider tests and verify failure**
+- [x] **Step 2: Run the provider tests and verify failure**
 
 Run: `uv run pytest tests/test_openai_provider.py -v`
 
 Expected: the format-builder imports fail and current schemas lack `minItems`
 and request-specific enums.
 
-- [ ] **Step 3: Replace constants with pure schema builders**
+- [x] **Step 3: Replace constants with pure schema builders**
 
 Build a fresh dictionary per request. Use the request IDs as string enums for
 workstream allocation, topic evidence, outcome evidence, unassigned IDs, and
@@ -369,7 +369,7 @@ For an empty allowed-ID tuple, omit the empty enum and constrain root
 tuple, constrain root `groups` to `maxItems: 0`. This preserves current empty-day
 behavior without emitting a provider-invalid empty enum.
 
-- [ ] **Step 4: Route provider methods through builders**
+- [x] **Step 4: Route provider methods through builders**
 
 ```python
 def summarize(self, request: SummaryRequest) -> ProviderResponse:
@@ -388,7 +388,7 @@ def merge(self, request: MergeRequest) -> ProviderResponse:
     )
 ```
 
-- [ ] **Step 5: Verify provider and summary integration tests**
+- [x] **Step 5: Verify provider and summary integration tests**
 
 Run:
 
@@ -399,7 +399,7 @@ uv run pytest -q
 
 Expected: generated schemas use only supplied IDs and all tests pass.
 
-- [ ] **Step 6: Commit schema alignment**
+- [x] **Step 6: Commit schema alignment**
 
 ```bash
 git add src/daytrace/providers/openai.py tests/test_openai_provider.py tests/test_summarize.py

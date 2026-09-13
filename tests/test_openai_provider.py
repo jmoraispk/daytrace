@@ -13,6 +13,7 @@ from openai import (
 )
 
 from daytrace.models import ProviderFailureKind
+import daytrace.providers.openai as openai_provider
 from daytrace.providers import OpenAIProvider, SummaryProviderError
 from daytrace.summarize import build_merge_request, build_summary_plan
 
@@ -118,6 +119,52 @@ def test_openai_provider_uses_constrained_merge_schema(
     OpenAIProvider("secret", "model", client=client).merge(request)
 
     assert calls[0]["text"]["format"]["name"] == "daytrace_workstream_merge_v1"
+
+
+def test_summary_schema_restricts_nonempty_ids_to_request(
+    make_episode_bundle,
+) -> None:
+    request = build_summary_plan(make_episode_bundle()).requests[0]
+
+    schema = openai_provider.workstream_json_format(request.episode_ids)["schema"]
+    workstream = schema["properties"]["workstreams"]["items"]
+    episode_ids = workstream["properties"]["episode_ids"]
+    topic_evidence = workstream["properties"]["topics"]["items"]["properties"][
+        "evidence"
+    ]
+    outcome_evidence = workstream["properties"]["outcomes"]["items"][
+        "properties"
+    ]["evidence"]
+    unassigned = schema["properties"]["unassigned_episode_ids"]
+
+    assert episode_ids["minItems"] == 1
+    assert episode_ids["items"]["enum"] == ["episode-001"]
+    assert topic_evidence["minItems"] == 1
+    assert topic_evidence["items"]["enum"] == ["episode-001"]
+    assert outcome_evidence["items"]["enum"] == ["episode-001"]
+    assert unassigned["items"]["enum"] == ["episode-001"]
+
+
+def test_merge_schema_restricts_nonempty_ids_to_request(make_digest) -> None:
+    request, _ = build_merge_request((make_digest(),))
+
+    schema = openai_provider.merge_json_format(request.provisional_ids)["schema"]
+    provisional_ids = schema["properties"]["groups"]["items"]["properties"][
+        "provisional_ids"
+    ]
+
+    assert provisional_ids["minItems"] == 1
+    assert provisional_ids["items"]["enum"] == ["provisional-001-001"]
+
+
+def test_empty_id_schemas_require_empty_root_collections() -> None:
+    summary = openai_provider.workstream_json_format(())["schema"]["properties"]
+    merge = openai_provider.merge_json_format(())["schema"]["properties"]
+
+    assert summary["workstreams"]["maxItems"] == 0
+    assert summary["unassigned_episode_ids"]["maxItems"] == 0
+    assert "enum" not in summary["unassigned_episode_ids"]["items"]
+    assert merge["groups"]["maxItems"] == 0
 
 
 @pytest.mark.parametrize(
