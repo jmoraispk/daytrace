@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 import httpx
@@ -29,6 +30,8 @@ def test_openai_provider_requests_strict_json_and_converts_usage(
             }
         ),
         usage=SimpleNamespace(input_tokens=120, output_tokens=30),
+        id="resp_test",
+        _request_id="req_test",
     )
     client = SimpleNamespace(
         responses=SimpleNamespace(
@@ -42,11 +45,34 @@ def test_openai_provider_requests_strict_json_and_converts_usage(
     assert result.provider == "openai"
     assert result.model == "user-selected-model"
     assert result.input_tokens == 120
+    assert result.response_id == "resp_test"
+    assert result.request_id == "req_test"
     assert calls[0]["model"] == "user-selected-model"
+    assert calls[0]["store"] is False
     assert calls[0]["text"]["format"]["type"] == "json_schema"
     assert calls[0]["text"]["format"]["name"] == "daytrace_workstream_digest_v2"
     assert "runtime-secret" not in repr(result)
     assert "runtime-secret" not in repr(calls)
+
+
+def test_openai_provider_rejects_unsafe_payload_before_client_call(
+    make_episode_bundle,
+) -> None:
+    calls = []
+    client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **kwargs: calls.append(kwargs))
+    )
+    provider = OpenAIProvider("runtime-secret", "model", client=client)
+    request = build_summary_plan(make_episode_bundle()).requests[0]
+    unsafe = replace(
+        request,
+        payload={"title": "http://localhost:8000/?key=" + "x" * 40},
+    )
+
+    with pytest.raises(RuntimeError, match="unsafe-cloud-payload"):
+        provider.summarize(unsafe)
+
+    assert calls == []
 
 
 def test_provider_wraps_sdk_errors_without_private_content(make_episode_bundle) -> None:
@@ -107,7 +133,9 @@ def test_provider_classifies_status_failure_without_sdk_message(
     status_code, error_type, kind, make_episode_bundle
 ) -> None:
     request = httpx.Request("POST", "https://api.openai.com/v1/responses")
-    response = httpx.Response(status_code, request=request)
+    response = httpx.Response(
+        status_code, request=request, headers={"x-request-id": "req_failure"}
+    )
     sdk_error = error_type("private provider detail", response=response, body=None)
     client = SimpleNamespace(
         responses=SimpleNamespace(
@@ -120,6 +148,7 @@ def test_provider_classifies_status_failure_without_sdk_message(
         provider.summarize(build_summary_plan(make_episode_bundle()).requests[0])
 
     assert caught.value.kind is kind
+    assert caught.value.request_id == "req_failure"
     assert "private provider detail" not in str(caught.value)
     assert "runtime-secret" not in repr(caught.value)
 

@@ -310,6 +310,8 @@ class ProviderResponse:
     model: str
     input_tokens: int | None = None
     output_tokens: int | None = None
+    response_id: str | None = None
+    request_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

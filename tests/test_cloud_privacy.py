@@ -1,5 +1,6 @@
 import pytest
 
+import daytrace.cloud_privacy as privacy
 from daytrace.cloud_privacy import (
     minimize_cloud_path,
     minimize_cloud_text,
@@ -47,3 +48,16 @@ def test_cloud_text_structurally_removes_url_private_parts(
     value: str, expected: str
 ) -> None:
     assert minimize_cloud_text(value) == expected
+
+
+def test_cloud_assertion_rejects_nested_url_query_without_echoing_value() -> None:
+    private = "http://localhost:8000/?key=" + "x" * 40
+
+    with pytest.raises(RuntimeError, match="unsafe-cloud-payload") as caught:
+        privacy.assert_cloud_safe_payload({"episodes": [{"title": private}]})
+
+    assert private not in str(caught.value)
+
+
+def test_cloud_assertion_allows_natural_question_punctuation() -> None:
+    privacy.assert_cloud_safe_payload({"title": "What changed? Review the result."})

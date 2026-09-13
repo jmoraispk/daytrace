@@ -193,7 +193,7 @@ git commit -m "fix: sanitize local service URL credentials"
   `ProviderResponse.response_id` / `request_id` fields, and optional safe
   `SummaryProviderError.request_id` metadata.
 
-- [ ] **Step 1: Add failing recursive egress-assertion tests**
+- [x] **Step 1: Add failing recursive egress-assertion tests**
 
 ```python
 def test_cloud_assertion_rejects_nested_url_query_without_echoing_value() -> None:
@@ -207,7 +207,7 @@ def test_cloud_assertion_allows_natural_question_punctuation() -> None:
     assert_cloud_safe_payload({"title": "What changed? Review the result."})
 ```
 
-- [ ] **Step 2: Add failing provider retention and no-call tests**
+- [x] **Step 2: Add failing provider retention and no-call tests**
 
 Extend the recording-client test to assert:
 
@@ -219,7 +219,7 @@ assert result.request_id == "req_test"
 
 Give the fake response `id="resp_test"` and `_request_id="req_test"`. Add a second test that builds a `SummaryRequest` containing a nested unsafe URL and proves `client.responses.create` is never called.
 
-- [ ] **Step 3: Run tests and verify failure**
+- [x] **Step 3: Run tests and verify failure**
 
 Run:
 
@@ -229,7 +229,7 @@ uv run pytest tests/test_cloud_privacy.py tests/test_openai_provider.py -v
 
 Expected: missing assertion API, missing `store`, and missing metadata fields fail.
 
-- [ ] **Step 4: Implement recursive privacy assertion**
+- [x] **Step 4: Implement recursive privacy assertion**
 
 In `cloud_privacy.py`, define a content-free exception and walk mappings and non-string sequences:
 
@@ -258,7 +258,7 @@ This relies on Task 1's structural URL replacement, so a query-bearing URL
 changes under `sanitize_generated_text` and fails closed. The exception contains
 no offending key, index, or value.
 
-- [ ] **Step 5: Add safe provider metadata and disable storage**
+- [x] **Step 5: Add safe provider metadata and disable storage**
 
 Extend `ProviderResponse` without breaking existing positional callers:
 
@@ -292,7 +292,7 @@ placing `response.id` or `response._request_id` in `ProviderResponse`.
 Apply the same helper to an SDK exception's `request_id` before retaining it on
 `SummaryProviderError`; never retain the SDK message or response body.
 
-- [ ] **Step 6: Verify focused and full tests**
+- [x] **Step 6: Verify focused and full tests**
 
 Run:
 
@@ -304,7 +304,7 @@ uv run pytest -q
 Expected: unsafe payloads fail before the fake client call, all calls set
 `store=False`, safe opaque IDs are retained, and private exception text remains absent.
 
-- [ ] **Step 7: Commit provider privacy behavior**
+- [x] **Step 7: Commit provider privacy behavior**
 
 ```bash
 git add src/daytrace/cloud_privacy.py src/daytrace/providers/openai.py src/daytrace/models.py tests/test_cloud_privacy.py tests/test_openai_provider.py

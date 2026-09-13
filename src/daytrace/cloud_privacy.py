@@ -1,10 +1,33 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from pathlib import PurePath, PureWindowsPath
 
 from daytrace.sanitize import sanitize_generated_text
 DIRECT_MESSAGE = re.compile(r"^.*?\s*\(DM\).*?(Slack|Teams).*$", re.I)
+
+
+class CloudPrivacyError(RuntimeError):
+    """A content-free provider-egress privacy failure."""
+
+    def __init__(self) -> None:
+        super().__init__("unsafe-cloud-payload")
+
+
+def assert_cloud_safe_payload(value: object) -> None:
+    if isinstance(value, str):
+        if sanitize_generated_text(value) != value:
+            raise CloudPrivacyError()
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            assert_cloud_safe_payload(key)
+            assert_cloud_safe_payload(item)
+        return
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        for item in value:
+            assert_cloud_safe_payload(item)
 
 def minimize_cloud_text(value: str | None) -> str | None:
     if not value:
