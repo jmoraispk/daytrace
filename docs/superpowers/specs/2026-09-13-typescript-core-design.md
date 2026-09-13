@@ -1,7 +1,7 @@
 # Browser-Compatible TypeScript Core Design
 
 **Date:** 2026-09-13  
-**Status:** Approved in chat; awaiting written-spec review
+**Status:** Approved
 
 ## Objective
 
