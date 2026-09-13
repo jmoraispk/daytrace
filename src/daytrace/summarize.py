@@ -27,6 +27,7 @@ from daytrace.models import (
     WorkstreamSummary,
 )
 from daytrace.sanitize import sanitize_generated_text
+from daytrace.summary_diagnostics import safe_response_shape
 
 
 PROMPT_SCHEMA = "daytrace.workstream-prompt.v2"
@@ -523,7 +524,7 @@ def _contextualized_validation_error(
             response_id=response.response_id,
             request_id=response.request_id,
         ),
-        exc.response_shape,
+        safe_response_shape(response.payload, set(item_ids)),
     )
 
 

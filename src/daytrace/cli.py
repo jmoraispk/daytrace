@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import NoReturn
 from zoneinfo import ZoneInfoNotFoundError
 
+from daytrace import __version__
 from daytrace.activitywatch import DEFAULT_SERVER, collect_day
+from daytrace.cloud_privacy import CloudPrivacyError
 from daytrace.diagnostics import diagnostic_messages
 from daytrace.episode import compact_sessions
 from daytrace.json_output import render_digest_json, render_episode_json
@@ -28,6 +30,12 @@ from daytrace.summarize import (
     SummaryValidationError,
     build_summary_plan,
     summarize_bundle,
+)
+from daytrace.summary_diagnostics import (
+    render_summary_failure_json,
+    safe_failure_code,
+    safe_failure_field,
+    safe_identifier,
 )
 
 
@@ -74,6 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
     activitywatch.add_argument(
         "--yes", action="store_true", help="confirm the disclosed cloud send"
     )
+    activitywatch.add_argument(
+        "--debug-output",
+        type=Path,
+        help="write privacy-safe AI failure metadata as JSON",
+    )
     return parser
 
 
@@ -88,6 +101,14 @@ def _validate_mode(args: argparse.Namespace) -> str | None:
         return "--raw cannot be combined with --summary ai"
     if args.yes and args.summary != "ai":
         return "--yes requires --summary ai"
+    if args.debug_output and args.summary != "ai":
+        return "--debug-output requires --summary ai"
+    if (
+        args.output
+        and args.debug_output
+        and args.output.absolute() == args.debug_output.absolute()
+    ):
+        return "--debug-output must differ from --output"
     return None
 
 
@@ -194,7 +215,9 @@ def _confirm_cloud_send(plan, provider: str, model: str, assume_yes: bool) -> bo
         return False
 
 
-def _summary_failure_message(exc: Exception) -> str:
+def _summary_failure_message(
+    exc: Exception, provider: object = "openai", model: object = "unknown"
+) -> str:
     if isinstance(exc, EpisodeRequestTooLarge):
         reason = "one compact episode exceeds the safe request limit"
     elif isinstance(exc, MergeRequestTooLarge):
@@ -209,9 +232,82 @@ def _summary_failure_message(exc: Exception) -> str:
         }.get(exc.kind, "the provider request failed")
     elif isinstance(exc, SummaryValidationError):
         reason = "the provider returned an invalid structured response"
+    elif isinstance(exc, CloudPrivacyError):
+        reason = "the provider payload failed local privacy validation"
     else:
         reason = "the compact activity request exceeds the safe request limit"
-    return f"warning: AI summary unavailable because {reason}; using deterministic fallback"
+    metadata = [
+        f"daytrace {__version__}",
+        f"provider={safe_identifier(provider, '[redacted-provider]')}",
+        f"model={safe_identifier(model, '[redacted-model]')}",
+    ]
+    if isinstance(exc, SummaryValidationError):
+        metadata.extend(
+            (
+                f"code={safe_failure_code(exc.code)}",
+                f"field={safe_failure_field(exc.field)}",
+            )
+        )
+        if exc.context is not None:
+            metadata.extend(
+                (
+                    f"stage={exc.context.stage.value}",
+                    f"call={exc.context.call_index}",
+                )
+            )
+            if exc.context.response_id:
+                metadata.append(
+                    "response_id="
+                    + safe_identifier(
+                        exc.context.response_id, "[redacted-response]"
+                    )
+                )
+            if exc.context.request_id:
+                metadata.append(
+                    "request_id="
+                    + safe_identifier(exc.context.request_id, "[redacted-request]")
+                )
+    return (
+        f"warning: AI summary unavailable because {reason}; "
+        f"using deterministic fallback ({'; '.join(metadata)})"
+    )
+
+
+def _failure_details(exc: Exception) -> tuple[str, str | None, object, object]:
+    if isinstance(exc, SummaryValidationError):
+        return exc.code, exc.field, exc.context, exc.response_shape
+    if isinstance(exc, SummaryProviderError):
+        kind = exc.kind.value if isinstance(exc.kind, ProviderFailureKind) else "request"
+        return f"provider-{kind}", None, None, None
+    if isinstance(exc, CloudPrivacyError):
+        return "unsafe-cloud-payload", None, None, None
+    if isinstance(exc, EpisodeRequestTooLarge):
+        return "episode-request-too-large", None, None, None
+    if isinstance(exc, MergeRequestTooLarge):
+        return "merge-request-too-large", None, None, None
+    return "summary-request-too-large", None, None, None
+
+
+def _write_failure_debug(
+    path: Path, exc: Exception, provider: object, model: object
+) -> bool:
+    code, field, context, response_shape = _failure_details(exc)
+    request_id = exc.request_id if isinstance(exc, SummaryProviderError) else None
+    rendered = render_summary_failure_json(
+        provider=provider,
+        model=model,
+        code=code,
+        field=field,
+        context=context,
+        response_shape=response_shape,
+        request_id=request_id,
+    )
+    try:
+        _write_atomic(path, rendered)
+    except OSError:
+        print("error: could not write AI failure metadata", file=sys.stderr)
+        return False
+    return True
 
 
 def _collect(args: argparse.Namespace):
@@ -256,6 +352,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     deterministic_fallback = _render_deterministic(bundle, args)
     try:
         plan = build_summary_plan(bundle)
+        if args.debug_output:
+            print(
+                "AI failure metadata will be written locally if this run fails.",
+                file=sys.stderr,
+            )
         if not _confirm_cloud_send(plan, args.provider, args.model, args.yes):
             print("error: cloud summary was not confirmed", file=sys.stderr)
             return 1
@@ -275,9 +376,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 bundle, digest, provenance, details=args.details
             )
         )
-    except (SummaryProviderError, SummaryValidationError, SummaryRequestTooLarge) as exc:
-        print(_summary_failure_message(exc), file=sys.stderr)
-        return 2 if _emit(deterministic_fallback, args.output) else 1
+    except (
+        CloudPrivacyError,
+        SummaryProviderError,
+        SummaryValidationError,
+        SummaryRequestTooLarge,
+    ) as exc:
+        print(_summary_failure_message(exc, args.provider, args.model), file=sys.stderr)
+        fallback_written = _emit(deterministic_fallback, args.output)
+        debug_written = (
+            _write_failure_debug(args.debug_output, exc, args.provider, args.model)
+            if args.debug_output
+            else True
+        )
+        return 2 if fallback_written and debug_written else 1
 
     return 0 if _emit(rendered, args.output) else 1
 

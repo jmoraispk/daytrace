@@ -8,8 +8,8 @@ from zoneinfo import ZoneInfoNotFoundError
 
 import pytest
 
-from daytrace import cli
-from daytrace.models import ProviderFailureKind
+from daytrace import __version__, cli
+from daytrace.models import ProviderFailureKind, SummaryFailureContext, SummaryPass
 from daytrace.providers import SummaryProviderError
 from daytrace.source import ActivityWatchConnectionError
 from daytrace.summarize import (
@@ -308,3 +308,177 @@ def test_json_format_produces_json_only_stdout(
     assert status == 0
     assert json.loads(captured.out)["schema"] == "daytrace.episode-bundle.v1"
     assert captured.err == ""
+
+
+def test_debug_output_requires_ai_mode(tmp_path: Path) -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "activitywatch",
+            "--date",
+            "2026-09-10",
+            "--debug-output",
+            str(tmp_path / "debug.json"),
+        ]
+    )
+
+    assert cli._validate_mode(args) == "--debug-output requires --summary ai"
+
+
+def test_debug_output_must_differ_from_primary_output(tmp_path: Path) -> None:
+    output = tmp_path / "same.json"
+    args = cli.build_parser().parse_args(
+        [
+            "activitywatch",
+            "--date",
+            "2026-09-10",
+            "--summary",
+            "ai",
+            "--provider",
+            "openai",
+            "--model",
+            "model",
+            "--output",
+            str(output),
+            "--debug-output",
+            str(output),
+        ]
+    )
+
+    assert cli._validate_mode(args) == "--debug-output must differ from --output"
+
+
+def test_validation_failure_writes_private_fallback_and_safe_debug_json(
+    monkeypatch, capsys, tmp_path: Path, make_episode_bundle
+) -> None:
+    output = tmp_path / "daytrace.md"
+    debug = tmp_path / "failure.json"
+    private = "private generated label"
+    context = SummaryFailureContext(
+        provider="openai",
+        model="model",
+        stage=SummaryPass.CHUNK,
+        call_index=1,
+        request_character_count=1234,
+        item_ids=("episode-001",),
+        response_id="resp_test",
+        request_id="req_test",
+    )
+    failure = SummaryValidationError(
+        "empty-ids",
+        "workstreams[0].episode_ids",
+        context,
+        {
+            "workstream_count": 1,
+            "known_allocated_ids": [],
+            "unknown_id_count": 0,
+        },
+    )
+    monkeypatch.setattr(cli, "collect_day", lambda *a, **k: make_episode_bundle())
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: "runtime-secret")
+    monkeypatch.setattr(
+        cli,
+        "_openai_summary",
+        lambda *a, **k: (_ for _ in ()).throw(failure),
+    )
+
+    status = cli.main(
+        [
+            "activitywatch",
+            "--date",
+            "2026-09-10",
+            "--summary",
+            "ai",
+            "--provider",
+            "openai",
+            "--model",
+            "model",
+            "--yes",
+            "--output",
+            str(output),
+            "--debug-output",
+            str(debug),
+        ]
+    )
+    captured = capsys.readouterr()
+    report = json.loads(debug.read_text(encoding="utf-8"))
+
+    assert status == 2
+    assert "Summary: Deterministic activity episodes" in output.read_text()
+    assert report["schema"] == "daytrace.ai-failure.v1"
+    assert report["validation"] == {
+        "code": "empty-ids",
+        "field": "workstreams[0].episode_ids",
+    }
+    assert f"daytrace {__version__}" in captured.err
+    assert "code=empty-ids" in captured.err
+    assert "field=workstreams[0].episode_ids" in captured.err
+    assert "AI failure metadata will be written locally if this run fails." in captured.err
+    combined = captured.out + captured.err + debug.read_text(encoding="utf-8")
+    assert private not in combined
+    assert "runtime-secret" not in combined
+
+
+def test_debug_output_failure_preserves_existing_file(
+    monkeypatch, capsys, tmp_path: Path, make_episode_bundle
+) -> None:
+    debug = tmp_path / "failure.json"
+    debug.write_text("original\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "collect_day", lambda *a, **k: make_episode_bundle())
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: "runtime-secret")
+    monkeypatch.setattr(
+        cli,
+        "_openai_summary",
+        lambda *a, **k: (_ for _ in ()).throw(SummaryProviderError()),
+    )
+    monkeypatch.setattr(cli.os, "replace", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+
+    status = cli.main(
+        [
+            "activitywatch",
+            "--date",
+            "2026-09-10",
+            "--summary",
+            "ai",
+            "--provider",
+            "openai",
+            "--model",
+            "model",
+            "--yes",
+            "--debug-output",
+            str(debug),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert status == 1
+    assert debug.read_text(encoding="utf-8") == "original\n"
+    assert "could not write AI failure metadata" in captured.err
+    assert str(debug) not in captured.err
+    assert "runtime-secret" not in captured.err
+
+
+def test_validation_warning_redacts_untrusted_metadata() -> None:
+    private = "private generated value"
+    context = SummaryFailureContext(
+        provider="openai",
+        model="model",
+        stage=SummaryPass.CHUNK,
+        call_index=1,
+        request_character_count=1234,
+        item_ids=("episode-001",),
+        response_id=f"resp\\n{private}",
+        request_id=f"req\\n{private}",
+    )
+    failure = SummaryValidationError(
+        f"invalid\\n{private}",
+        f"field\\n{private}",
+        context,
+    )
+
+    message = cli._summary_failure_message(failure, "openai", "model")
+
+    assert private not in message
+    assert "code=redacted-code" in message
+    assert "field=redacted-field" in message
+    assert "response_id=[redacted-response]" in message
+    assert "request_id=[redacted-request]" in message

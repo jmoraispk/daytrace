@@ -548,7 +548,7 @@ git commit -m "feat: expose safe AI validation diagnostics"
 - Consumes: a `SummaryValidationError` and its untrusted response payload only at the validation boundary.
 - Produces: `safe_response_shape(payload, allowed_ids) -> Mapping[str, object]`, `render_summary_failure_json(exc, provider, model) -> str`, and CLI option `--debug-output PATH`.
 
-- [ ] **Step 1: Add failing safe-shape tests**
+- [x] **Step 1: Add failing safe-shape tests**
 
 Use an invalid synthetic payload containing private generated labels/text and an
 unknown credential-shaped ID. Assert the projection contains only:
@@ -568,7 +568,7 @@ assert "private generated text" not in rendered
 assert "credential-shaped-unknown-id" not in rendered
 ```
 
-- [ ] **Step 2: Add failing support JSON tests**
+- [x] **Step 2: Add failing support JSON tests**
 
 Construct a `SummaryValidationError` with context and safe shape. Require this
 exact top-level contract:
@@ -594,7 +594,7 @@ exact top-level contract:
 Omit optional ID/context keys when unavailable rather than serializing private
 exception representations.
 
-- [ ] **Step 3: Add failing CLI tests**
+- [x] **Step 3: Add failing CLI tests**
 
 Cover:
 
@@ -607,7 +607,7 @@ Cover:
 - generated text, ActivityWatch titles, and API key are absent from stderr and support JSON;
 - an atomic debug write failure reports a content-free output error and returns 1 after preserving any existing debug file.
 
-- [ ] **Step 4: Run focused tests and verify failure**
+- [x] **Step 4: Run focused tests and verify failure**
 
 Run:
 
@@ -617,7 +617,7 @@ uv run pytest tests/test_summary_diagnostics.py tests/test_cli.py -v
 
 Expected: module, renderer, parser option, and contextual warning are missing.
 
-- [ ] **Step 5: Implement safe response-shape projection**
+- [x] **Step 5: Implement safe response-shape projection**
 
 `safe_response_shape` must tolerate arbitrary Python objects and never call
 `repr` or `str` on untrusted values. Inspect only recognized mapping keys and
@@ -629,7 +629,7 @@ At the `summarize_bundle` validation boundary, compute this projection from the
 response payload and attach only the projection—not the payload—to the re-raised
 `SummaryValidationError`.
 
-- [ ] **Step 6: Implement versioned support rendering**
+- [x] **Step 6: Implement versioned support rendering**
 
 `render_summary_failure_json` builds a fresh allow-listed dictionary and uses
 `json.dumps(..., ensure_ascii=False, sort_keys=True, indent=2) + "\n"`. It never
@@ -639,7 +639,7 @@ Pass provider, model, and response/request identifiers through one
 safe-identifier helper. Values outside `^[A-Za-z0-9._:-]{1,200}$` become fixed
 redacted labels; they are never copied verbatim into stderr or JSON.
 
-- [ ] **Step 7: Add CLI option and safe warning detail**
+- [x] **Step 7: Add CLI option and safe warning detail**
 
 Add:
 
@@ -665,7 +665,7 @@ Provider and privacy failures may write a smaller artifact containing provider,
 model, failure kind/code, and any safe request metadata available; they must not
 invent response metadata.
 
-- [ ] **Step 8: Verify CLI and full suite**
+- [x] **Step 8: Verify CLI and full suite**
 
 Run:
 
@@ -677,7 +677,7 @@ uv run pytest -q
 Expected: fallback remains unchanged, debug JSON is opt-in and private, and all
 tests pass.
 
-- [ ] **Step 9: Commit support diagnostics**
+- [x] **Step 9: Commit support diagnostics**
 
 ```bash
 git add src/daytrace/summary_diagnostics.py src/daytrace/summarize.py src/daytrace/cli.py tests/test_summary_diagnostics.py tests/test_cli.py
