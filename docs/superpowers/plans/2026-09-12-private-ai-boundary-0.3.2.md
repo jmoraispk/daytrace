@@ -698,7 +698,7 @@ git commit -m "feat: write redacted AI failure reports"
 - Consumes: completed 0.3.2 behavior and public CLI.
 - Produces: published DayTrace 0.3.2 wheel/source archive, tag `v0.3.2`, and user command for the sanitized raw recapture.
 
-- [ ] **Step 1: Update README privacy and troubleshooting guidance**
+- [x] **Step 1: Update README privacy and troubleshooting guidance**
 
 Document:
 
@@ -729,7 +729,7 @@ uvx --refresh --link-mode=copy daytrace@0.3.2 activitywatch `
 State that raw output is sanitized but still personally sensitive and must be
 reviewed before sharing.
 
-- [ ] **Step 2: Bump all package metadata to 0.3.2**
+- [x] **Step 2: Bump all package metadata to 0.3.2**
 
 Set:
 
@@ -745,7 +745,7 @@ __version__ = "0.3.2"
 
 Run `uv lock` and verify no dependency change beyond the root package version.
 
-- [ ] **Step 3: Run release verification**
+- [x] **Step 3: Run release verification**
 
 Run:
 
@@ -765,7 +765,7 @@ and rely on the repository's configured pytest/build/CI gates rather than adding
 new tooling in a patch release. Expected: 0 failures; both archives contain the
 package, metadata, license, and no personal trace/support artifact.
 
-- [ ] **Step 4: Commit release metadata**
+- [x] **Step 4: Commit release metadata**
 
 ```bash
 git add README.md pyproject.toml src/daytrace/__init__.py uv.lock

@@ -43,8 +43,13 @@ After the package is published, the equivalent one-off workflows are:
 uvx daytrace@latest activitywatch --date 2026-09-10 --output daytrace.md
 
 # AI-assisted inferred workstreams; key entered in a hidden prompt
-uvx daytrace@latest activitywatch --date 2026-09-10 --summary ai `
-  --provider openai --model YOUR_MODEL --output daytrace.md
+uvx --refresh --link-mode=copy daytrace@0.3.2 activitywatch `
+  --date 2026-09-10 `
+  --summary ai `
+  --provider openai `
+  --model gpt-5.6-terra `
+  --debug-output daytrace-ai-failure.json `
+  --output daytrace.md
 
 # Structured handoff for the future Second Brain plugin
 uvx daytrace@latest activitywatch --date 2026-09-10 --summary ai `
@@ -65,14 +70,19 @@ for confirmation. Most compact days use one call; unusually large days are
 partitioned at episode boundaries and receive one constrained merge call. Only
 after consent does DayTrace request the OpenAI API key through a hidden prompt.
 The key is held in memory only. Never put a key in command-line arguments or
-paste it into support logs.
+paste it into support logs. OpenAI Responses API calls set `store=False`.
 
 The model returns structured data that DayTrace validates locally. Each topic
 and visible achievement must cite a supplied episode, every episode must be
 allocated exactly once, and model-produced text receives another secret scan.
 Durations always come from the deterministic local trace. If an explicitly
 requested AI call or response fails, DayTrace writes the deterministic fallback
-and exits with status 2.
+and exits with status 2. With `--debug-output`, it also writes a versioned JSON
+support artifact containing only allow-listed structural metadata: failure
+codes, response shape counts, supplied episode IDs, and safe opaque provider
+identifiers. It never includes model-generated prose, ActivityWatch titles,
+request bodies, response bodies, or the API key. Review this artifact before
+sharing it, as you would any diagnostic file.
 
 Useful local modes:
 
@@ -84,6 +94,20 @@ Useful local modes:
   plugin; Markdown is the default.
 - `--yes` confirms the disclosed cloud send for non-interactive AI automation,
   but the API key is still collected separately through the hidden prompt.
+
+To capture the sanitized raw sessions needed to improve DayTrace's episode
+compression in a later release:
+
+```powershell
+uvx --refresh --link-mode=copy daytrace@0.3.2 activitywatch `
+  --date 2026-09-10 `
+  --format json `
+  --raw `
+  --output daytrace-raw.json
+```
+
+Raw output has passed DayTrace's sanitizer, but it still describes personal
+activity and can contain sensitive context. Review it before sharing.
 
 If Windows reports that uv cannot hardlink across cache and target filesystems,
 use `uvx --link-mode=copy daytrace@latest ...`; this affects installation speed,
