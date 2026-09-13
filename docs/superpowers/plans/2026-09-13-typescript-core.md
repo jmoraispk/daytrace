@@ -14,7 +14,7 @@
 
 - Keep the existing Python implementation and CLI intact.
 - Publish both Python and npm packages as version `0.4.0`.
-- Public npm package name: `daytrace`; source directory: `packages/daytrace-core/`.
+- Public npm package name: `@jmoraispk/daytrace`; source directory: `packages/daytrace-core/`.
 - Export only ESM JavaScript and TypeScript declarations.
 - The shipped TypeScript package has zero runtime dependencies and imports no Node built-ins.
 - Use injected interfaces for ActivityWatch HTTP and AI providers.
@@ -773,7 +773,7 @@ git commit -m "test: enforce Python TypeScript parity"
 The script creates a temporary consumer, installs the tarball, writes:
 
 ```ts
-import { DAYTRACE_VERSION, buildSummaryPlan, renderEpisodeJson } from "daytrace";
+import { DAYTRACE_VERSION, buildSummaryPlan, renderEpisodeJson } from "@jmoraispk/daytrace";
 globalThis.__daytraceSmoke = {
   version: DAYTRACE_VERSION,
   buildSummaryPlan,
@@ -842,7 +842,7 @@ import {
   collectDay,
   renderDigestMarkdown,
   summarizeBundleOrFallback,
-} from "daytrace";
+} from "@jmoraispk/daytrace";
 
 const bundle = await collectDay({
   day: "2026-09-10",
@@ -865,7 +865,7 @@ signatures immediately below the example.
 
 - [ ] **Step 3: Write the focused npm README**
 
-Document `npm install daytrace`, ESM-only behavior, browser/Electron support,
+Document `npm install @jmoraispk/daytrace`, ESM-only behavior, browser/Electron support,
 zero runtime dependencies, public exports, cancellation, progress, privacy,
 provider validation, deterministic fallback, and schema compatibility. State
 explicitly that the library includes no API key handling, UI, vault access,
@@ -1012,7 +1012,7 @@ Verify remote `main` and tag resolve to the release commit.
 Report:
 
 - Python package `daytrace==0.4.0` and `pip install daytrace==0.4.0`;
-- npm package `daytrace@0.4.0` and `npm install daytrace@0.4.0`;
+- npm package `@jmoraispk/daytrace@0.4.0` and `npm install @jmoraispk/daytrace@0.4.0`;
 - public TypeScript API;
 - Python and TypeScript test counts;
 - build, pack, and browser smoke results;

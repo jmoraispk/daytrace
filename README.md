@@ -9,7 +9,7 @@ It is available in two forms from the same repository:
 | Package | Install | Best for |
 | --- | --- | --- |
 | Python `daytrace` | `uv tool install daytrace@latest` | A ready-to-run ActivityWatch CLI |
-| npm `daytrace` | `npm install daytrace` | Browser/Electron and Obsidian integrations |
+| npm `@jmoraispk/daytrace` | `npm install @jmoraispk/daytrace` | Browser/Electron and Obsidian integrations |
 
 Both implementations preserve the same versioned schemas and core semantics.
 Python remains the reference implementation; synthetic parity fixtures keep the
@@ -141,7 +141,7 @@ markdown = render_episode_markdown(bundle)
 Install the browser-compatible ESM package:
 
 ```bash
-npm install daytrace
+npm install @jmoraispk/daytrace
 ```
 
 The package has zero runtime dependencies and no Node built-in imports. It is
@@ -156,7 +156,7 @@ import {
   summarizeBundleOrFallback,
   type ActivityWatchTransport,
   type SummaryProvider,
-} from "daytrace";
+} from "@jmoraispk/daytrace";
 
 const activityWatchTransport: ActivityWatchTransport = {
   async request({ server, path, query, signal }) {
@@ -193,6 +193,15 @@ const markdown = result.kind === "ai"
   ? renderDigestMarkdown(bundle, result.digest, result.provenance)
   : renderEpisodeMarkdown(result.bundle);
 ```
+
+If the consuming plugin should keep the shorter `"daytrace"` import specifier,
+install the scoped package under an npm alias:
+
+```bash
+npm install daytrace@npm:@jmoraispk/daytrace@^0.4.0
+```
+
+The plugin can then import the same API from `"daytrace"`.
 
 The two injected boundaries are intentionally small:
 

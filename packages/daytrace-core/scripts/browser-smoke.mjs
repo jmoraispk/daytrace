@@ -24,10 +24,10 @@ try {
     stdio: "pipe",
   });
   const entry = join(consumer, "entry.mjs");
-  await writeFile(entry, `import { DAYTRACE_VERSION, buildSummaryPlan, renderEpisodeJson } from "daytrace";
+  await writeFile(entry, `import { DAYTRACE_VERSION, buildSummaryPlan, renderEpisodeJson } from "@jmoraispk/daytrace";
 globalThis.__daytraceSmoke = { version: DAYTRACE_VERSION, buildSummaryPlan, renderEpisodeJson };
 `);
-  const installed = await import(pathToFileURL(join(consumer, "node_modules", "daytrace", "dist", "index.js")));
+  const installed = await import(pathToFileURL(join(consumer, "node_modules", "@jmoraispk", "daytrace", "dist", "index.js")));
   if (installed.DAYTRACE_VERSION !== "0.4.0" || typeof installed.buildSummaryPlan !== "function") {
     throw new Error("packed package exports are incomplete");
   }

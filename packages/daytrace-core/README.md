@@ -4,10 +4,10 @@ Browser-compatible DayTrace core for turning ActivityWatch events into compact,
 privacy-aware daily activity episodes and validated AI workstream summaries.
 
 ```bash
-npm install daytrace
+npm install @jmoraispk/daytrace
 ```
 
-`daytrace` is ESM-only, ships TypeScript declarations, has zero runtime
+`@jmoraispk/daytrace` is ESM-only, ships TypeScript declarations, has zero runtime
 dependencies, and bundles for browser/Electron environments without Node
 polyfills. It is the reusable core intended for integrations such as an Obsidian
 Second Brain plugin.
@@ -40,7 +40,7 @@ import {
   summarizeBundleOrFallback,
   type ActivityWatchTransport,
   type SummaryProvider,
-} from "daytrace";
+} from "@jmoraispk/daytrace";
 
 const transport: ActivityWatchTransport = {
   async request({ server, path, query, signal }) {
@@ -75,6 +75,13 @@ const result = await summarizeBundleOrFallback(bundle, provider, undefined, {
 const markdown = result.kind === "ai"
   ? renderDigestMarkdown(bundle, result.digest, result.provenance)
   : renderEpisodeMarkdown(result.bundle);
+```
+
+To retain a shorter `"daytrace"` import in an existing consumer, install it as
+an npm alias:
+
+```bash
+npm install daytrace@npm:@jmoraispk/daytrace@^0.4.0
 ```
 
 An Obsidian plugin can implement `SummaryProvider.complete` with the key and

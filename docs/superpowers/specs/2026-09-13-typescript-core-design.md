@@ -7,7 +7,9 @@
 
 Add a browser-compatible TypeScript implementation of DayTrace's reusable core
 without disturbing the existing Python library or CLI. The TypeScript package
-will be published publicly to npm as `daytrace`. The Python and npm
+will be published publicly to npm as `@jmoraispk/daytrace`. The scoped name is
+required because npm rejects the unscoped `daytrace` name as too similar to the
+existing `dd-trace` package. The Python and npm
 distributions will share version `0.4.0` for this release.
 
 The immediate consumer is the Obsidian Second Brain plugin. The package must
@@ -38,13 +40,16 @@ ActivityWatch data will be committed.
 
 ## Distribution and Versioning
 
-The package source lives at `packages/daytrace-core/`, but its public npm name is
-`daytrace`:
+The package source lives at `packages/daytrace-core/`, and its public npm name is
+`@jmoraispk/daytrace`:
 
 ```bash
 pip install daytrace==0.4.0
-npm install daytrace@0.4.0
+npm install @jmoraispk/daytrace@0.4.0
 ```
+
+Consumers that need the shorter import specifier can use npm's package alias:
+`daytrace@npm:@jmoraispk/daytrace@0.4.0`.
 
 The package exports ESM JavaScript and TypeScript declarations. It has no runtime
 npm dependencies. Development-only tooling may include TypeScript, Vitest, and

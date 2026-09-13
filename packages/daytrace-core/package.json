@@ -1,5 +1,5 @@
 {
-  "name": "daytrace",
+  "name": "@jmoraispk/daytrace",
   "version": "0.4.0",
   "description": "Privacy-first ActivityWatch normalization and journal summaries for browsers and Electron",
   "type": "module",
