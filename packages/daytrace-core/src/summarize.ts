@@ -5,6 +5,7 @@ import type {
   EpisodeBundle,
   JsonObject,
   JsonValue,
+  MergeGroup,
   MergeRequest,
   SessionBundle,
   SummaryPlan,
@@ -12,7 +13,8 @@ import type {
   WorkstreamDigest,
   WorkstreamSummary,
 } from "./models.js";
-import { DaytraceError } from "./models.js";
+import { DaytraceError, SummaryValidationError } from "./models.js";
+import { sanitizeGeneratedText } from "./sanitize.js";
 
 export const PROMPT_SCHEMA = "daytrace.workstream-prompt.v6";
 export const REQUEST_SCHEMA = "daytrace.summary-request.v2";
@@ -243,6 +245,173 @@ export function buildMergeRequest(
     },
     provisional,
   };
+}
+
+function fail(code: string, field: string): never {
+  throw new SummaryValidationError(code, field);
+}
+
+function boundedText(value: unknown, field: string, limit = 500): string {
+  if (typeof value !== "string" || value.trim().length === 0 || [...value].length > limit) fail("invalid-text", field);
+  return sanitizeGeneratedText(value.trim());
+}
+
+function plainObject(value: unknown, field: string, required: ReadonlySet<string>): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) fail("invalid-shape", field);
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) fail("invalid-shape", field);
+  const result = value as Record<string, unknown>;
+  const keys = Object.keys(result);
+  if (keys.length !== required.size || keys.some((key) => !required.has(key))) fail("invalid-shape", field);
+  return result;
+}
+
+function boundedList(value: unknown, field: string, limit: number): unknown[] {
+  if (!Array.isArray(value) || value.length > limit) fail("invalid-shape", field);
+  return value;
+}
+
+function evidenceIds(value: unknown, allowed: ReadonlySet<string>, field: string): readonly string[] {
+  const items = boundedList(value, field, 100);
+  if (items.length === 0) fail("empty-evidence", field);
+  const result = items.map((item) => boundedText(item, field, 50));
+  if (new Set(result).size !== result.length) fail("duplicate-ids", field);
+  if (result.some((item) => !allowed.has(item))) fail("unknown-ids", field);
+  return result;
+}
+
+function requiredIds(value: unknown, allowed: ReadonlySet<string>, field: string): readonly string[] {
+  const items = boundedList(value, field, 100);
+  const result = items.map((item) => boundedText(item, field, 50));
+  if (result.length === 0) fail("empty-ids", field);
+  if (new Set(result).size !== result.length) fail("duplicate-ids", field);
+  if (result.some((item) => !allowed.has(item))) fail("unknown-ids", field);
+  return result;
+}
+
+const CONFIDENCE = new Set(["high", "medium", "low"] as const);
+const STRENGTH = new Set(["observed", "likely", "none"] as const);
+
+export function validateDigest(payload: unknown, allowedEpisodeIds: ReadonlySet<string>): WorkstreamDigest {
+  const root = plainObject(payload, "response", new Set(["schema", "workstreams", "unassigned_episode_ids"]));
+  if (root.schema !== DIGEST_SCHEMA) fail("invalid-schema", "schema");
+  const workstreams: WorkstreamSummary[] = [];
+  const allocated: string[] = [];
+  for (const [index, raw] of boundedList(root.workstreams, "workstreams", 30).entries()) {
+    const field = `workstreams[${index}]`;
+    const value = plainObject(raw, field, new Set(["label", "confidence", "episode_ids", "topics", "outcomes"]));
+    const episodeIds = requiredIds(value.episode_ids, allowedEpisodeIds, `${field}.episode_ids`);
+    allocated.push(...episodeIds);
+    const confidence = boundedText(value.confidence, `${field}.confidence`, 20);
+    if (!CONFIDENCE.has(confidence as "high" | "medium" | "low")) fail("invalid-enum", `${field}.confidence`);
+    const topics = boundedList(value.topics, `${field}.topics`, 20).map((rawTopic, topicIndex) => {
+      const topicField = `${field}.topics[${topicIndex}]`;
+      const topic = plainObject(rawTopic, topicField, new Set(["text", "evidence"]));
+      return {
+        text: boundedText(topic.text, `${topicField}.text`),
+        evidence: evidenceIds(topic.evidence, allowedEpisodeIds, `${topicField}.evidence`),
+      };
+    });
+    const outcomes = boundedList(value.outcomes, `${field}.outcomes`, 20).flatMap((rawOutcome, outcomeIndex) => {
+      const outcomeField = `${field}.outcomes[${outcomeIndex}]`;
+      const outcome = plainObject(rawOutcome, outcomeField, new Set(["text", "strength", "evidence"]));
+      const strength = boundedText(outcome.strength, `${outcomeField}.strength`, 20);
+      if (!STRENGTH.has(strength as "observed" | "likely" | "none")) fail("invalid-enum", `${outcomeField}.strength`);
+      const evidence = evidenceIds(outcome.evidence, allowedEpisodeIds, `${outcomeField}.evidence`);
+      if (strength === "none") return [];
+      return [{
+        text: boundedText(outcome.text, `${outcomeField}.text`),
+        strength: strength as "observed" | "likely",
+        evidence,
+      }];
+    });
+    workstreams.push({
+      label: boundedText(value.label, `${field}.label`, 120),
+      confidence: confidence as "high" | "medium" | "low",
+      episodeIds,
+      topics,
+      outcomes,
+    });
+  }
+  const unassigned = boundedList(root.unassigned_episode_ids, "unassigned_episode_ids", 100)
+    .map((item) => boundedText(item, "unassigned_episode_ids", 50));
+  const allocation = [...allocated, ...unassigned];
+  if (
+    new Set(allocation).size !== allocation.length
+    || allocation.some((item) => !allowedEpisodeIds.has(item))
+    || allowedEpisodeIds.size !== new Set(allocation).size
+  ) fail("invalid-episode-allocation", "episode-allocation");
+  return { workstreams, unassignedEpisodeIds: unassigned };
+}
+
+export function validateMerge(payload: unknown, allowed: ReadonlySet<string>): readonly MergeGroup[] {
+  const root = plainObject(payload, "merge response", new Set(["schema", "groups"]));
+  if (root.schema !== "daytrace.workstream-merge.v1") fail("invalid-schema", "schema");
+  const allocated: string[] = [];
+  const groups = boundedList(root.groups, "groups", 30).map((raw, index) => {
+    const field = `groups[${index}]`;
+    const value = plainObject(raw, field, new Set(["label", "confidence", "provisional_ids"]));
+    const provisionalIds = requiredIds(value.provisional_ids, allowed, `${field}.provisional_ids`);
+    allocated.push(...provisionalIds);
+    const confidence = boundedText(value.confidence, `${field}.confidence`, 20);
+    if (!CONFIDENCE.has(confidence as "high" | "medium" | "low")) fail("invalid-enum", `${field}.confidence`);
+    return {
+      label: boundedText(value.label, `${field}.label`, 120),
+      confidence: confidence as "high" | "medium" | "low",
+      provisionalIds,
+    };
+  });
+  if (new Set(allocated).size !== allocated.length) fail("invalid-provisional-allocation", "provisional-allocation");
+  return groups;
+}
+
+function uniqueByValue<T>(values: readonly T[]): readonly T[] {
+  const seen = new Set<string>();
+  return values.filter((item) => {
+    const marker = pythonJson(item);
+    if (seen.has(marker)) return false;
+    seen.add(marker);
+    return true;
+  });
+}
+
+export function assembleMergedDigest(
+  groups: readonly MergeGroup[],
+  provisional: ReadonlyMap<string, WorkstreamSummary>,
+  chunks: readonly WorkstreamDigest[],
+): WorkstreamDigest {
+  const merged = groups.map((group) => {
+    const selected = group.provisionalIds.map((id) => provisional.get(id)!);
+    return {
+      label: group.label,
+      confidence: group.confidence,
+      episodeIds: selected.flatMap((item) => item.episodeIds),
+      topics: uniqueByValue(selected.flatMap((item) => item.topics)),
+      outcomes: uniqueByValue(selected.flatMap((item) => item.outcomes)),
+    } satisfies WorkstreamSummary;
+  });
+  const groupIndex = new Map(groups.flatMap((group, index) => group.provisionalIds.map((id) => [id, index] as const)));
+  const emitted = new Set<number>();
+  const workstreams: WorkstreamSummary[] = [];
+  for (const [id, workstream] of provisional) {
+    const index = groupIndex.get(id);
+    if (index === undefined) workstreams.push(workstream);
+    else if (!emitted.has(index)) {
+      workstreams.push(merged[index]!);
+      emitted.add(index);
+    }
+  }
+  return {
+    workstreams,
+    unassignedEpisodeIds: uniqueByValue(chunks.flatMap((item) => item.unassignedEpisodeIds)),
+  };
+}
+
+export function validateFinalAllocation(digest: WorkstreamDigest, allowed: ReadonlySet<string>): void {
+  const allocation = [...digest.workstreams.flatMap((item) => item.episodeIds), ...digest.unassignedEpisodeIds];
+  if (new Set(allocation).size !== allocation.length || allocation.some((item) => !allowed.has(item)) || allowed.size !== new Set(allocation).size) {
+    fail("invalid-episode-allocation", "episode-allocation");
+  }
 }
 
 export const __private = { pythonJson, characterCount };
