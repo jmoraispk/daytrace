@@ -6,6 +6,8 @@ import type {
   EpisodeBundle,
   JsonValue,
   SessionBundle,
+  SummaryProvenance,
+  WorkstreamDigest,
 } from "./models.js";
 import { durationSeconds, timestampMs } from "./time.js";
 
@@ -137,5 +139,47 @@ export function renderEpisodeJson(bundle: EpisodeBundle, options: EpisodeJsonOpt
         .sort((left, right) => timestampMs(left.start) - timestampMs(right.start) || left.sessionId.localeCompare(right.sessionId))
         .map((item) => sessionValue(item, true)),
     } : {}),
+  });
+}
+
+export interface DigestJsonOptions {
+  readonly details?: boolean;
+}
+
+export function renderDigestJson(
+  bundle: EpisodeBundle,
+  digest: WorkstreamDigest,
+  provenance: SummaryProvenance,
+  options: DigestJsonOptions = {},
+): string {
+  const episodeById = new Map(bundle.episodes.map((item) => [item.episodeId, item]));
+  return stableJson({
+    schema: "daytrace.workstream-report.v2",
+    date: bundle.day,
+    timezone: bundle.timezoneName,
+    timezone_status: "inferred_at_query",
+    focused_seconds: bundle.focusedSeconds ?? null,
+    summary: {
+      provider: provenance.provider,
+      model: provenance.model,
+      prompt_schema: provenance.promptSchema,
+      input_tokens: provenance.inputTokens ?? null,
+      output_tokens: provenance.outputTokens ?? null,
+      request_count: provenance.requestCount,
+    },
+    workstreams: digest.workstreams.map((item) => {
+      const episodes = item.episodeIds.map((id) => episodeById.get(id)!);
+      return {
+        label: item.label,
+        confidence: item.confidence,
+        active_seconds: episodes.reduce((total, episode) => total + episode.activeSeconds, 0),
+        episode_ids: [...item.episodeIds],
+        topics: item.topics.map((topic) => ({ text: topic.text, evidence: [...topic.evidence] })),
+        outcomes: item.outcomes.map((outcome) => ({ text: outcome.text, strength: outcome.strength, evidence: [...outcome.evidence] })),
+        activity: episodes.map((episode) => episodeValue(episode, options.details ?? false)),
+      };
+    }),
+    unassigned_activity: digest.unassignedEpisodeIds.map((id) => episodeValue(episodeById.get(id)!, options.details ?? false)),
+    diagnostics: bundle.diagnostics.map((item) => ({ code: item.code, count: item.count })),
   });
 }

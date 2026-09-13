@@ -8,7 +8,10 @@ import type {
   ContextSignal,
   EpisodeBundle,
   SessionBundle,
+  SummaryProvenance,
   SourceKind,
+  WorkstreamDigest,
+  WorkstreamSummary,
 } from "./models.js";
 import { durationSeconds, timestampMs } from "./time.js";
 
@@ -201,6 +204,78 @@ export function renderEpisodeMarkdown(bundle: EpisodeBundle, options: MarkdownDe
   if (bundle.diagnostics.length > 0) {
     lines.push("", "## Diagnostics", "");
     for (const message of diagnosticMessages(bundle.diagnostics)) lines.push(`- ${message[0]?.toLocaleUpperCase()}${message.slice(1)}.`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function outcomeCell(item: WorkstreamSummary): string {
+  const visible = item.outcomes.filter((outcome) => outcome.strength !== "none");
+  if (visible.length === 0) return "No completion should be claimed from this trace alone.";
+  return visible.map((outcome) => `${outcome.strength === "likely" ? "Likely: " : ""}${escapeMarkdown(outcome.text)}`).join("<br>");
+}
+
+function topicCell(item: WorkstreamSummary): string {
+  return item.topics.length === 0
+    ? "No specific topics identified."
+    : item.topics.map((topic) => escapeMarkdown(topic.text)).join("<br>");
+}
+
+export interface DigestMarkdownOptions {
+  readonly details?: boolean;
+}
+
+export function renderDigestMarkdown(
+  bundle: EpisodeBundle,
+  digest: WorkstreamDigest,
+  provenance: SummaryProvenance,
+  options: DigestMarkdownOptions = {},
+): string {
+  const focused = bundle.focusedSeconds === undefined ? "Unavailable" : formatDuration(bundle.focusedSeconds);
+  const episodeById = new Map(bundle.episodes.map((item) => [item.episodeId, item]));
+  const lines = [
+    `# DayTrace — ${bundle.day}`,
+    "",
+    `Timezone: ${inlineCode(bundle.timezoneName)} (inferred at query time)`,
+    `Focused activity: ${focused}`,
+    `Summary: AI-assisted workstreams (${inlineCode(provenance.provider)} / ${inlineCode(provenance.model)})`,
+  ];
+  if (options.details) lines.push(`Provider requests: ${provenance.requestCount}`);
+  lines.push(
+    "",
+    "## What this day appears to contain",
+    "",
+    "This is a confidence-aware summary inferred from the activity trace. Achievements require evidence of a resulting state, not merely an open application.",
+    "",
+    "| Project / workstream | Apparent achievements | Work and topics |",
+    "| --- | --- | --- |",
+  );
+  for (const workstream of digest.workstreams) {
+    lines.push(`| **${escapeMarkdown(workstream.label)}** | ${outcomeCell(workstream)} | ${topicCell(workstream)} |`);
+  }
+  if (digest.workstreams.length === 0) lines.push("| _No coherent workstreams identified._ | — | — |");
+  if (!options.details) return `${lines.join("\n")}\n`;
+  lines.push("", "## Supporting activity", "");
+  const confidence = { high: "High", medium: "Medium", low: "Low" } as const;
+  for (const workstream of digest.workstreams) {
+    const episodes = workstream.episodeIds.map((id) => episodeById.get(id)!);
+    lines.push(
+      `### ${escapeMarkdown(workstream.label)}`,
+      "",
+      `Primary allocation · ${confidence[workstream.confidence]} confidence · ${formatDuration(episodes.reduce((total, item) => total + item.activeSeconds, 0))}`,
+      "",
+    );
+    for (const episode of [...episodes].sort((left, right) => timestampMs(left.start) - timestampMs(right.start) || left.episodeId.localeCompare(right.episodeId))) {
+      lines.push(episodeLine(episode, bundle.timezoneName));
+      lines.push(`  - Episode ID: ${inlineCode(episode.episodeId)}`);
+      lines.push(`  - Activity transitions: ${episode.sessionIds.length}`);
+    }
+  }
+  lines.push("", "## Unassigned activity", "");
+  if (digest.unassignedEpisodeIds.length === 0) lines.push("None.");
+  else for (const id of digest.unassignedEpisodeIds) {
+    const episode = episodeById.get(id)!;
+    lines.push(episodeLine(episode, bundle.timezoneName));
+    lines.push(`  - Episode ID: ${inlineCode(episode.episodeId)}`);
   }
   return `${lines.join("\n")}\n`;
 }

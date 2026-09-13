@@ -1,5 +1,3 @@
-export const DAYTRACE_VERSION = "0.4.0";
-
 export * from "./activitywatch.js";
 export * from "./cloud-privacy.js";
 export * from "./diagnostics.js";
@@ -18,3 +16,4 @@ export * from "./summarize.js";
 export * from "./summary-diagnostics.js";
 export * from "./time.js";
 export * from "./transform.js";
+export * from "./version.js";
