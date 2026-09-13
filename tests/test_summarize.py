@@ -233,6 +233,194 @@ def test_rejects_invalid_or_duplicate_evidence(mutation) -> None:
         validate_digest(payload, {"episode-001"})
 
 
+@pytest.mark.parametrize(
+    ("payload", "allowed", "code", "field"),
+    [
+        (
+            {
+                "schema": "daytrace.workstream-digest.v2",
+                "workstreams": [
+                    {
+                        "label": "Work",
+                        "confidence": "high",
+                        "episode_ids": [],
+                        "topics": [],
+                        "outcomes": [],
+                    }
+                ],
+                "unassigned_episode_ids": ["episode-001"],
+            },
+            {"episode-001"},
+            "empty-ids",
+            "workstreams[0].episode_ids",
+        ),
+        (
+            {
+                "schema": "daytrace.workstream-digest.v2",
+                "workstreams": [
+                    {
+                        "label": "Work",
+                        "confidence": "high",
+                        "episode_ids": ["episode-001", "episode-001"],
+                        "topics": [],
+                        "outcomes": [],
+                    }
+                ],
+                "unassigned_episode_ids": [],
+            },
+            {"episode-001"},
+            "duplicate-ids",
+            "workstreams[0].episode_ids",
+        ),
+        (
+            {
+                "schema": "daytrace.workstream-digest.v2",
+                "workstreams": [
+                    {
+                        "label": "Work",
+                        "confidence": "high",
+                        "episode_ids": ["episode-999"],
+                        "topics": [],
+                        "outcomes": [],
+                    }
+                ],
+                "unassigned_episode_ids": [],
+            },
+            {"episode-001"},
+            "unknown-ids",
+            "workstreams[0].episode_ids",
+        ),
+        (
+            {
+                "schema": "daytrace.workstream-digest.v2",
+                "workstreams": [
+                    {
+                        "label": "Work",
+                        "confidence": "high",
+                        "episode_ids": ["episode-001"],
+                        "topics": [{"text": "Topic", "evidence": []}],
+                        "outcomes": [],
+                    }
+                ],
+                "unassigned_episode_ids": [],
+            },
+            {"episode-001"},
+            "empty-evidence",
+            "workstreams[0].topics[0].evidence",
+        ),
+    ],
+)
+def test_validation_failures_have_stable_codes_and_paths(
+    payload, allowed, code, field
+) -> None:
+    with pytest.raises(SummaryValidationError) as caught:
+        validate_digest(payload, allowed)
+
+    assert caught.value.code == code
+    assert caught.value.field == field
+
+
+def test_invalid_allocation_has_stable_code_and_path() -> None:
+    payload = valid_payload()
+    payload["unassigned_episode_ids"] = ["episode-001"]
+
+    with pytest.raises(SummaryValidationError) as caught:
+        validate_digest(payload, {"episode-001"})
+
+    assert caught.value.code == "invalid-episode-allocation"
+    assert caught.value.field == "episode-allocation"
+
+
+def test_chunk_validation_failure_has_safe_request_context(
+    make_episode_bundle,
+) -> None:
+    bundle = make_episode_bundle()
+    plan = build_summary_plan(bundle)
+
+    class Provider:
+        def summarize(self, request):
+            return ProviderResponse(
+                {
+                    "schema": "daytrace.workstream-digest.v2",
+                    "workstreams": [
+                        {
+                            "label": "Private generated label",
+                            "confidence": "high",
+                            "episode_ids": [],
+                            "topics": [],
+                            "outcomes": [],
+                        }
+                    ],
+                    "unassigned_episode_ids": list(request.episode_ids),
+                },
+                "openai",
+                "fixed",
+                response_id="resp_test",
+                request_id="req_test",
+            )
+
+        def merge(self, request):
+            raise AssertionError("merge must not be called")
+
+    with pytest.raises(SummaryValidationError) as caught:
+        summarize_bundle(bundle, Provider(), plan)
+
+    context = caught.value.context
+    assert context.stage.value == "chunk"
+    assert context.call_index == 1
+    assert context.request_character_count == plan.requests[0].character_count
+    assert context.item_ids == plan.requests[0].episode_ids
+    assert context.response_id == "resp_test"
+    assert context.request_id == "req_test"
+    assert "Private generated label" not in str(caught.value)
+
+
+def test_merge_validation_failure_has_safe_request_context(
+    make_many_episode_bundle,
+) -> None:
+    bundle = make_many_episode_bundle(3, label_size=120)
+    plan = build_summary_plan(bundle, target_characters=650, max_characters=900)
+
+    class Provider:
+        def summarize(self, request):
+            return ProviderResponse(
+                {
+                    "schema": "daytrace.workstream-digest.v2",
+                    "workstreams": [
+                        {
+                            "label": "Chunk",
+                            "confidence": "medium",
+                            "episode_ids": list(request.episode_ids),
+                            "topics": [],
+                            "outcomes": [],
+                        }
+                    ],
+                    "unassigned_episode_ids": [],
+                },
+                "openai",
+                "fixed",
+            )
+
+        def merge(self, request):
+            return ProviderResponse(
+                {"schema": "daytrace.workstream-merge.v1", "groups": []},
+                "openai",
+                "fixed",
+                response_id="resp_merge",
+                request_id="req_merge",
+            )
+
+    with pytest.raises(SummaryValidationError) as caught:
+        summarize_bundle(bundle, Provider(), plan)
+
+    context = caught.value.context
+    assert context.stage.value == "merge"
+    assert context.call_index == len(plan.requests) + 1
+    assert context.item_ids
+    assert context.response_id == "resp_merge"
+    assert context.request_id == "req_merge"
+
+
 def test_omits_none_outcomes_and_returns_provenance(make_episode_bundle) -> None:
     payload = valid_payload()
     payload["workstreams"][0]["outcomes"].append(

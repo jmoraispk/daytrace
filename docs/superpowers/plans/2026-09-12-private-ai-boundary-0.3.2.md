@@ -419,7 +419,7 @@ git commit -m "fix: constrain AI summaries to supplied evidence"
 - Consumes: untrusted structured provider payloads and the request whose IDs they must allocate.
 - Produces: `SummaryFailureContext`, `SummaryValidationError(code, field, context=None)`, and content-free context enrichment around each chunk/merge validator call.
 
-- [ ] **Step 1: Add failing code/path tests**
+- [x] **Step 1: Add failing code/path tests**
 
 Update invalid-response tests to assert exact metadata without asserting private values:
 
@@ -439,7 +439,7 @@ Add cases for:
 - invalid response object shape: `invalid-shape`;
 - wrong schema constant: `invalid-schema`.
 
-- [ ] **Step 2: Add failing chunk-context test**
+- [x] **Step 2: Add failing chunk-context test**
 
 Use a fake provider returning an invalid digest with safe response metadata and
 assert the raised error has:
@@ -455,13 +455,13 @@ assert caught.value.context.request_id == "req_test"
 
 Add the corresponding multi-chunk merge case with `SummaryPass.MERGE`.
 
-- [ ] **Step 3: Run tests and verify failure**
+- [x] **Step 3: Run tests and verify failure**
 
 Run: `uv run pytest tests/test_summarize.py -v`
 
 Expected: current exceptions expose only a prose message and no typed context.
 
-- [ ] **Step 4: Add typed failure context**
+- [x] **Step 4: Add typed failure context**
 
 In `models.py`:
 
@@ -499,14 +499,14 @@ class SummaryValidationError(RuntimeError):
 The `response_shape` field is populated later by the diagnostics projector and
 must never hold the original payload.
 
-- [ ] **Step 5: Give every validator branch a stable code and path**
+- [x] **Step 5: Give every validator branch a stable code and path**
 
 Split `_ids` and `_evidence` checks so empty, duplicate, and unknown cases have
 distinct codes. Keep exception text derived only from static code/path strings.
 Use `invalid-episode-allocation` for incomplete, duplicate, or extra final
 allocation; the support shape will carry content-free counts.
 
-- [ ] **Step 6: Enrich errors at provider boundaries**
+- [x] **Step 6: Enrich errors at provider boundaries**
 
 Wrap each `validate_digest`, `validate_merge`, and
 `validate_final_allocation` call. Re-raise a new error with the original
@@ -514,7 +514,7 @@ code/path plus a `SummaryFailureContext` constructed from the request and
 `ProviderResponse`. Chunk calls are one-based in chronological order; the merge
 call index follows all chunk calls.
 
-- [ ] **Step 7: Verify diagnostics and all existing behavior**
+- [x] **Step 7: Verify diagnostics and all existing behavior**
 
 Run:
 
@@ -526,7 +526,7 @@ uv run pytest -q
 Expected: each invalid fixture has a stable content-free code/path and all valid
 digests are unchanged.
 
-- [ ] **Step 8: Commit typed validation failures**
+- [x] **Step 8: Commit typed validation failures**
 
 ```bash
 git add src/daytrace/models.py src/daytrace/summarize.py tests/test_summarize.py tests/test_cli.py

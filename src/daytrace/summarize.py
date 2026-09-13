@@ -18,6 +18,7 @@ from daytrace.models import (
     ProviderResponse,
     SessionBundle,
     SummaryPass,
+    SummaryFailureContext,
     SummaryPlan,
     SummaryProvenance,
     SummaryRequest,
@@ -50,6 +51,19 @@ class MergeRequestTooLarge(SummaryRequestTooLarge):
 
 class SummaryValidationError(RuntimeError):
     """A provider response does not match the workstream schema."""
+
+    def __init__(
+        self,
+        code: str,
+        field: str = "response",
+        context: SummaryFailureContext | None = None,
+        response_shape: Mapping[str, object] | None = None,
+    ) -> None:
+        self.code = code
+        self.field = field
+        self.context = context
+        self.response_shape = response_shape
+        super().__init__(f"{code} at {field}")
 
 
 @runtime_checkable
@@ -201,37 +215,43 @@ def build_summary_request(bundle: EpisodeBundle | SessionBundle) -> SummaryReque
 
 def _bounded_text(value: object, field: str, limit: int = 500) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
-        raise SummaryValidationError(f"invalid {field}")
+        raise SummaryValidationError("invalid-text", field)
     return sanitize_generated_text(value.strip())
 
 
 def _object(value: object, field: str, required: set[str]) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or set(value) != required:
-        raise SummaryValidationError(f"invalid {field}")
+        raise SummaryValidationError("invalid-shape", field)
     return value
 
 
 def _list(value: object, field: str, limit: int) -> list[object]:
     if not isinstance(value, list) or len(value) > limit:
-        raise SummaryValidationError(f"invalid {field}")
+        raise SummaryValidationError("invalid-shape", field)
     return value
 
 
 def _evidence(value: object, allowed: set[str], field: str) -> tuple[str, ...]:
     values = _list(value, field, 100)
     if not values:
-        raise SummaryValidationError(f"invalid {field}")
+        raise SummaryValidationError("empty-evidence", field)
     result = tuple(_bounded_text(item, field, 50) for item in values)
-    if len(result) != len(set(result)) or not set(result) <= allowed:
-        raise SummaryValidationError(f"invalid {field}")
+    if len(result) != len(set(result)):
+        raise SummaryValidationError("duplicate-ids", field)
+    if not set(result) <= allowed:
+        raise SummaryValidationError("unknown-ids", field)
     return result
 
 
 def _ids(value: object, allowed: set[str], field: str) -> tuple[str, ...]:
     values = _list(value, field, 100)
     result = tuple(_bounded_text(item, field, 50) for item in values)
-    if not result or len(result) != len(set(result)) or not set(result) <= allowed:
-        raise SummaryValidationError(f"invalid {field}")
+    if not result:
+        raise SummaryValidationError("empty-ids", field)
+    if len(result) != len(set(result)):
+        raise SummaryValidationError("duplicate-ids", field)
+    if not set(result) <= allowed:
+        raise SummaryValidationError("unknown-ids", field)
     return result
 
 
@@ -244,7 +264,7 @@ def validate_digest(
         {"schema", "workstreams", "unassigned_episode_ids"},
     )
     if root["schema"] != DIGEST_SCHEMA:
-        raise SummaryValidationError("invalid schema")
+        raise SummaryValidationError("invalid-schema", "schema")
     workstreams: list[WorkstreamSummary] = []
     allocated: list[str] = []
     for index, raw_workstream in enumerate(
@@ -265,7 +285,9 @@ def validate_digest(
                 _bounded_text(value["confidence"], f"{field}.confidence", 20)
             )
         except ValueError:
-            raise SummaryValidationError(f"invalid {field}.confidence") from None
+            raise SummaryValidationError(
+                "invalid-enum", f"{field}.confidence"
+            ) from None
         topics: list[TopicSummary] = []
         for topic_index, raw_topic in enumerate(
             _list(value["topics"], f"{field}.topics", 20)
@@ -296,7 +318,7 @@ def validate_digest(
                 )
             except ValueError:
                 raise SummaryValidationError(
-                    f"invalid {outcome_field}.strength"
+                    "invalid-enum", f"{outcome_field}.strength"
                 ) from None
             evidence = _evidence(
                 outcome["evidence"], set(episode_ids), f"{outcome_field}.evidence"
@@ -326,7 +348,9 @@ def validate_digest(
     )
     allocation = allocated + list(unassigned)
     if len(allocation) != len(set(allocation)) or set(allocation) != allowed_episode_ids:
-        raise SummaryValidationError("invalid episode allocation")
+        raise SummaryValidationError(
+            "invalid-episode-allocation", "episode-allocation"
+        )
     return WorkstreamDigest(tuple(workstreams), unassigned)
 
 
@@ -383,7 +407,7 @@ def validate_merge(
 ) -> tuple[MergeGroup, ...]:
     root = _object(payload, "merge response", {"schema", "groups"})
     if root["schema"] != "daytrace.workstream-merge.v1":
-        raise SummaryValidationError("invalid merge schema")
+        raise SummaryValidationError("invalid-schema", "schema")
     groups: list[MergeGroup] = []
     allocated: list[str] = []
     for index, raw_group in enumerate(_list(root["groups"], "groups", 30)):
@@ -400,7 +424,9 @@ def validate_merge(
                 _bounded_text(value["confidence"], f"{field}.confidence", 20)
             )
         except ValueError:
-            raise SummaryValidationError(f"invalid {field}.confidence") from None
+            raise SummaryValidationError(
+                "invalid-enum", f"{field}.confidence"
+            ) from None
         groups.append(
             MergeGroup(
                 label=_bounded_text(value["label"], f"{field}.label", 120),
@@ -409,7 +435,9 @@ def validate_merge(
             )
         )
     if len(allocated) != len(set(allocated)) or set(allocated) != allowed:
-        raise SummaryValidationError("invalid provisional allocation")
+        raise SummaryValidationError(
+            "invalid-provisional-allocation", "provisional-allocation"
+        )
     return tuple(groups)
 
 
@@ -457,7 +485,9 @@ def validate_final_allocation(digest: WorkstreamDigest, allowed: set[str]) -> No
         for episode_id in workstream.episode_ids
     ] + list(digest.unassigned_episode_ids)
     if len(allocated) != len(set(allocated)) or set(allocated) != allowed:
-        raise SummaryValidationError("invalid final episode allocation")
+        raise SummaryValidationError(
+            "invalid-episode-allocation", "episode-allocation"
+        )
 
 
 def _sum_known(values: Iterable[int | None]) -> int | None:
@@ -466,6 +496,34 @@ def _sum_known(values: Iterable[int | None]) -> int | None:
         sum(value for value in resolved if value is not None)
         if any(value is not None for value in resolved)
         else None
+    )
+
+
+def _contextualized_validation_error(
+    exc: SummaryValidationError,
+    response: ProviderResponse,
+    request: SummaryRequest | MergeRequest,
+    call_index: int,
+) -> SummaryValidationError:
+    item_ids = (
+        request.episode_ids
+        if isinstance(request, SummaryRequest)
+        else request.provisional_ids
+    )
+    return SummaryValidationError(
+        exc.code,
+        exc.field,
+        SummaryFailureContext(
+            provider=response.provider,
+            model=response.model,
+            stage=request.pass_kind,
+            call_index=call_index,
+            request_character_count=request.character_count,
+            item_ids=item_ids,
+            response_id=response.response_id,
+            request_id=response.request_id,
+        ),
+        exc.response_shape,
     )
 
 
@@ -478,23 +536,45 @@ def summarize_bundle(
     resolved_plan = plan or build_summary_plan(resolved_bundle)
     chunk_digests: list[WorkstreamDigest] = []
     responses: list[ProviderResponse] = []
-    for request in resolved_plan.requests:
+    last_request: SummaryRequest | MergeRequest | None = None
+    for call_index, request in enumerate(resolved_plan.requests, start=1):
         response = provider.summarize(request)
         responses.append(response)
-        chunk_digests.append(validate_digest(response.payload, set(request.episode_ids)))
+        last_request = request
+        try:
+            chunk_digests.append(
+                validate_digest(response.payload, set(request.episode_ids))
+            )
+        except SummaryValidationError as exc:
+            raise _contextualized_validation_error(
+                exc, response, request, call_index
+            ) from None
     if len(chunk_digests) == 1:
         digest = chunk_digests[0]
     else:
         merge_request, provisional = build_merge_request(tuple(chunk_digests))
         merge_response = provider.merge(merge_request)
         responses.append(merge_response)
-        groups = validate_merge(
-            merge_response.payload, set(merge_request.provisional_ids)
-        )
+        last_request = merge_request
+        try:
+            groups = validate_merge(
+                merge_response.payload, set(merge_request.provisional_ids)
+            )
+        except SummaryValidationError as exc:
+            raise _contextualized_validation_error(
+                exc, merge_response, merge_request, len(responses)
+            ) from None
         digest = assemble_merged_digest(groups, provisional, tuple(chunk_digests))
-    validate_final_allocation(
-        digest, {item.episode_id for item in resolved_bundle.episodes}
-    )
+    try:
+        validate_final_allocation(
+            digest, {item.episode_id for item in resolved_bundle.episodes}
+        )
+    except SummaryValidationError as exc:
+        if not responses or last_request is None:
+            raise
+        raise _contextualized_validation_error(
+            exc, responses[-1], last_request, len(responses)
+        ) from None
     provenance = SummaryProvenance(
         provider=responses[0].provider,
         model=responses[0].model,

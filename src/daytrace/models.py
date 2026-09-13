@@ -315,6 +315,18 @@ class ProviderResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class SummaryFailureContext:
+    provider: str
+    model: str
+    stage: SummaryPass
+    call_index: int
+    request_character_count: int
+    item_ids: tuple[str, ...]
+    response_id: str | None = None
+    request_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SummaryProvenance:
     provider: str
     model: str
