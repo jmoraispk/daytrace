@@ -65,8 +65,10 @@ class _ProgressProvider:
         stopped = threading.Event()
 
         def count_elapsed() -> None:
+            ticks = 0
             while not stopped.wait(1):
-                elapsed = max(0, int(time.monotonic() - started))
+                ticks += 1
+                elapsed = max(ticks, int(time.monotonic() - started))
                 print(
                     f"\r{waiting} {elapsed}s",
                     end="",
